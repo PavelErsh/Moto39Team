@@ -1,0 +1,10 @@
+Директория миграций Alembic.
+
+Создать новую миграцию:
+    alembic revision --autogenerate -m "описание"
+
+Применить миграции:
+    alembic upgrade head
+
+Откатить одну:
+    alembic downgrade -1
