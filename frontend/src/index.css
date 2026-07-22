@@ -30,9 +30,12 @@
   --radius: 4px;
   --radius-lg: 8px;
 
-  --font-head: 'Bebas Neue', 'Oswald', 'Impact', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', 'Menlo', monospace;
+  --font-head: 'Bebas Neue', 'Oswald', 'Impact', system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono: 'JetBrains Mono', 'Consolas', 'Menlo', monospace,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
 *,
@@ -115,6 +118,21 @@ a:hover {
   background: var(--accent);
   color: #000;
 }
+
+/* Twemoji — принудительная замена системных эмодзи цветными SVG.
+   Нужно, потому что iOS-симулятор и некоторые Android/WebView
+   не содержат Apple Color Emoji и рисуют "?". */
+img.twemoji,
+img.emoji {
+  height: 1em;
+  width: 1em;
+  margin: 0 0.05em 0 0.1em;
+  vertical-align: -0.15em;
+  display: inline-block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -1182,7 +1200,71 @@ a:hover {
   white-space: nowrap;
 }
 
+.events-table__cover {
+  width: 72px;
+  height: 54px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+
+.events-table__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.events-table__thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.events-table__thumb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.events-table__thumb:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.events-table__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.events-table__thumb-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 6px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border-hot);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 /* ---------- Calendar: tabs (mobile-first) ---------- */
+
 .calendar-tabs {
   display: flex;
   gap: 4px;
@@ -1406,7 +1488,22 @@ a:hover {
     font-size: 12px;
     letter-spacing: 0.06em;
   }
+  /* На узких экранах текст должен переноситься, чтобы карточки были одной высоты */
+  .event-card__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .event-card__meta {
+    font-size: 12px;
+  }
+  .event-card__meta-row {
+    grid-template-columns: 18px 1fr;
+    gap: 6px;
+  }
 }
+
 
 /* Admin tabs */
 .admin-tabs {
@@ -1492,3 +1589,549 @@ a:hover {
   margin-left: 6px;
 }
 
+/* ================= МОТОСПРАВКА / REFERENCES ================= */
+
+.references-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.references-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.references-page__title {
+  margin: 0 0 4px;
+  font-family: var(--font-head);
+  font-size: clamp(30px, 5vw, 44px);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.references-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.references-search {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 10px 14px;
+  min-height: 42px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.references-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+.references-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .references-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .references-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.reference-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.reference-card:hover {
+  border-color: var(--border-hot);
+  transform: translateY(-1px);
+}
+
+.reference-card__cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0a0d0a;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+.reference-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reference-card__body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reference-card__cat {
+  align-self: flex-start;
+  padding: 2px 10px;
+  border: 1px solid var(--border-hot);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(57, 255, 20, 0.06);
+}
+
+.reference-card__title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.reference-card__summary {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- Reference detail ---------- */
+
+.reference-detail {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reference-detail__breadcrumbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reference-detail__back {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.reference-detail__back:hover {
+  color: var(--accent);
+}
+
+.reference-detail__cat {
+  align-self: flex-start;
+  padding: 2px 10px;
+  border: 1px solid var(--border-hot);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(57, 255, 20, 0.06);
+}
+
+.reference-detail__title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: clamp(28px, 5vw, 42px);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.reference-detail__summary {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.reference-detail__cover {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #0a0d0a;
+}
+.reference-detail__cover img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.reference-detail__content {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.reference-detail__content p {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+.reference-detail__content p:last-child {
+  margin-bottom: 0;
+}
+
+.reference-detail__subtitle {
+  margin: 8px 0 8px;
+  font-family: var(--font-head);
+  font-size: 22px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.reference-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.reference-gallery__item {
+  display: block;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0a0d0a;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.reference-gallery__item:hover {
+  border-color: var(--accent);
+  transform: scale(1.02);
+}
+.reference-gallery__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- Admin: cover / gallery edit ---------- */
+
+.cover-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.cover-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0a0d0a;
+  max-width: 320px;
+}
+.cover-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.gallery-edit {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.gallery-edit__item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0a0d0a;
+}
+.gallery-edit__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gallery-edit__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--danger);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.gallery-edit__remove:hover {
+  background: var(--danger);
+  color: #fff;
+}
+.gallery-edit__remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--phosphor);
+  background: rgba(57, 255, 20, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+
+/* ------------------- Event card: cover, link, badge ------------------- */
+
+.event-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * `display: contents` — карточка остаётся 2-колоночным гридом
+ * (дата + тело), а <Link> "растворяется" внутри неё,
+ * не ломая раскладку.
+ */
+.event-card__link {
+  display: contents;
+  color: inherit;
+  text-decoration: none;
+}
+
+.event-card__link:focus-visible .event-card__title,
+.event-card__link:hover .event-card__title {
+  color: var(--phosphor);
+}
+
+/* Обложка — компактная миниатюра слева, чтобы список меньше скролить.
+   Карточка с обложкой становится 3-колоночной: [обложка] [дата] [тело].
+   Обложка сделана крупнее блока с датой. */
+.event-card.has-cover {
+  grid-template-columns: 120px 56px 1fr;
+  gap: 12px;
+}
+
+.event-card__cover {
+  grid-column: 1 / 2;
+  order: -1;
+  width: 120px;
+  height: 120px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  margin: 0;
+  align-self: start;
+}
+
+.event-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Уменьшаем блок с датой в карточках с обложкой, чтобы он не был крупнее картинки. */
+.event-card.has-cover .event-card__date {
+  padding: 6px 4px;
+  align-self: start;
+}
+.event-card.has-cover .event-card__day {
+  font-size: 22px;
+}
+.event-card.has-cover .event-card__month {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+.event-card.has-cover .event-card__weekday {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-top: 1px;
+}
+
+/* ~ планшет / крупный телефон: слегка компактнее */
+@media (max-width: 720px) {
+  .event-card.has-cover {
+    grid-template-columns: 96px 52px 1fr;
+    gap: 10px;
+  }
+  .event-card__cover {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+/* Обычный телефон */
+@media (max-width: 480px) {
+  .event-card.has-cover {
+    grid-template-columns: 84px 44px 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+  .event-card__cover {
+    width: 84px;
+    height: 84px;
+  }
+  .event-card.has-cover .event-card__day {
+    font-size: 20px;
+  }
+  .event-card.has-cover .event-card__date {
+    padding: 4px 2px;
+  }
+  .event-card.has-cover .event-card__body {
+    gap: 6px;
+  }
+  .event-card.has-cover .event-card__title {
+    font-size: 16px;
+  }
+  .event-card.has-cover .event-card__desc {
+    display: none; /* на телефоне описание скрываем, чтобы карточки были ровными */
+  }
+  .event-card.has-cover .event-card__meta {
+    font-size: 12px;
+  }
+  .event-card.has-cover .event-card__badge {
+    top: 6px;
+    right: 6px;
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}
+
+/* Узкий телефон — иконки мета-строк ещё компактнее */
+@media (max-width: 380px) {
+  .event-card.has-cover {
+    grid-template-columns: 72px 40px 1fr;
+    gap: 6px;
+    padding: 8px;
+  }
+  .event-card__cover {
+    width: 72px;
+    height: 72px;
+  }
+  .event-card.has-cover .event-card__day {
+    font-size: 18px;
+  }
+  .event-card.has-cover .event-card__month {
+    font-size: 9px;
+  }
+  .event-card.has-cover .event-card__weekday {
+    display: none;
+  }
+  .event-card.has-cover .event-card__title {
+    font-size: 15px;
+  }
+  .event-card.has-cover .event-card__meta-row {
+    grid-template-columns: 16px 1fr;
+    gap: 4px;
+  }
+}
+
+
+
+
+.event-card__badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 1px solid var(--border-hot);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(4px);
+}
+
+/* Event detail: строка с местом и организатором */
+.event-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 16px 0;
+  padding: 12px 14px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.event-detail__meta .event-card__meta-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  grid-template-columns: none;
+}
+
+.event-detail__meta dt {
+  color: var(--muted);
+}

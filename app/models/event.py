@@ -1,7 +1,16 @@
 """Модель мероприятия мотокалендаря."""
 from datetime import date as _date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +32,16 @@ class Event(Base):
     organizer: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Обложка карточки мероприятия и галерея изображений (по аналогии
+    # с мотосправкой). Обе колонки опциональны, чтобы старые записи
+    # не требовали значений.
+    cover_image_url: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    images: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
 
     created_by: Mapped[int | None] = mapped_column(
         Integer,

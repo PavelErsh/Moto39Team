@@ -22,4 +22,5 @@ frontend/dist/
 frontend/node_modules/
 htmlcov/
 test.db
+uploads/
 venv/

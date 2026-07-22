@@ -8,11 +8,12 @@ type Tile = {
 }
 
 const TILES: Tile[] = [
-  { to: '/moto', title: 'Гараж', icon: '🏍' },
+  { to: '/moto', title: 'Гараж', icon: '🏍️' },
   { to: '/riders', title: 'Райдеры', icon: '👥' },
   { to: '/rides', title: 'Заезды', icon: '🏁' },
   { to: '/calendar', title: 'Календарь', icon: '📅' },
-  { to: '/map', title: 'Карта', icon: '🗺' },
+  { to: '/reference', title: 'Мотосправка', icon: '📖' },
+  { to: '/map', title: 'Карта', icon: '🗺️' },
 ]
 
 export default function HomePage() {
@@ -22,7 +23,7 @@ export default function HomePage() {
     return (
       <div className="home">
         <section className="hero">
-          <div className="hero__moto">🏍</div>
+          <div className="hero__moto">🏍️</div>
           <p className="hero__lead">
             Один руль — одна дорога.
             <br />
@@ -45,7 +46,7 @@ export default function HomePage() {
   return (
     <div className="home">
       <section className="hero">
-        <div className="hero__moto">🏍</div>
+        <div className="hero__moto">🏍️</div>
         <p className="hero__lead">
           Добро пожаловать, {user.full_name || user.username}
         </p>

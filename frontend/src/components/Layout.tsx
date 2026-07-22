@@ -12,16 +12,19 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="site-header">
         <div className="container header-inner">
           <Link to="/" className="logo">
-            <span className="logo-mark">🏍</span>
-            <span className="logo-text">Мотобратство</span>
+            <span className="logo-mark">🏍️</span>
+            <span className="logo-text">MOTO39</span>
           </Link>
 
           <nav className="nav">
             {user ? (
               <>
+                <NavLink to="/reference" className="nav-link" title="Мотосправка">
+                  📖 Справка
+                </NavLink>
                 {user.is_superuser && (
                   <NavLink to="/admin" className="nav-link" title="Админка">
-                    ⚙ Админ
+                    ⚙️ Админ
                   </NavLink>
                 )}
                 <Link to="/cabinet" className="nav-user" title="Профиль">
@@ -54,7 +57,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="site-footer">
-        <div className="container">Мотобратство</div>
+        <div className="container">MOTO39</div>
       </footer>
     </div>
   )

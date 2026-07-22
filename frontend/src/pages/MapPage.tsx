@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  apiListUserLocations,
+  apiUpdateMyLocation,
+  type UserLocation,
+} from '../api/motorcycles'
 
 // Калининград — центр по умолчанию
 const DEFAULT_CENTER: [number, number] = [54.7104, 20.4522]
 const DEFAULT_ZOOM = 11
 const MY_ZOOM = 15
+
+// Как часто отправляем свои координаты на бэкенд, мс.
+const LOCATION_PUSH_INTERVAL_MS = 30_000
+// Как часто подтягиваем чужие координаты с бэкенда, мс.
+const LOCATION_POLL_INTERVAL_MS = 30_000
+// Свежесть чужих координат (минуты) — только те, кто был на связи недавно.
+const RIDERS_MAX_AGE_MIN = 60 * 24
 
 // Ключ Яндекс.Карт (опционально). Регистрируется в кабинете разработчика Яндекса.
 // Если ключ не задан — используем бесплатный Leaflet + OpenStreetMap.
@@ -118,6 +130,20 @@ function loadLeaflet(): Promise<any> {
   return window.__leafletLoader
 }
 
+/* --------------------------- Утилиты форматов --------------------------- */
+
+function formatLastSeen(iso: string): string {
+  const then = new Date(iso).getTime()
+  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (diffSec < 60) return 'только что'
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin} мин назад`
+  const diffH = Math.round(diffMin / 60)
+  if (diffH < 24) return `${diffH} ч назад`
+  const diffD = Math.round(diffH / 24)
+  return `${diffD} д назад`
+}
+
 /* ------------------------------ Компонент ------------------------------ */
 
 export default function MapPage() {
@@ -130,6 +156,11 @@ export default function MapPage() {
     null,
   )
 
+  // Отдельная коллекция маркеров других райдеров: userId -> marker
+  const riderMarkersRef = useRef<Map<number, any>>(new Map())
+  const lastPushRef = useRef<number>(0)
+  const lastPushedRef = useRef<{ lat: number; lng: number } | null>(null)
+
   const [status, setStatus] = useState<string>('Загружаем карту…')
   const [coords, setCoords] = useState<{
     lat: number
@@ -139,6 +170,7 @@ export default function MapPage() {
 
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  const [riders, setRiders] = useState<UserLocation[]>([])
 
   // Инициализация карты
   useEffect(() => {
@@ -168,14 +200,13 @@ export default function MapPage() {
             center: DEFAULT_CENTER,
             zoom: DEFAULT_ZOOM,
             zoomControl: true,
-            attributionControl: true,
+            attributionControl: false,
           })
           L.tileLayer(
             'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             {
               maxZoom: 19,
-              attribution:
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+              attribution: '',
             },
           ).addTo(map)
           mapRef.current = map
@@ -202,6 +233,22 @@ export default function MapPage() {
 
     return () => {
       cancelled = true
+      // Убираем маркеры других райдеров
+      if (mapRef.current) {
+        try {
+          riderMarkersRef.current.forEach((marker) => {
+            if (USE_YANDEX) {
+              mapRef.current.geoObjects.remove(marker)
+            } else {
+              marker.remove()
+            }
+          })
+        } catch {
+          /* noop */
+        }
+      }
+      riderMarkersRef.current.clear()
+
       if (mapRef.current) {
         try {
           if (USE_YANDEX) {
@@ -219,6 +266,30 @@ export default function MapPage() {
     }
   }, [])
 
+  // Отправка своих координат на бэкенд (троттлинг)
+  const pushMyLocation = (lat: number, lng: number, accuracy: number) => {
+    const now = Date.now()
+    const last = lastPushedRef.current
+    // Не спамим одинаковые координаты. Отправляем, если:
+    // - ещё не отправляли,
+    // - прошло больше LOCATION_PUSH_INTERVAL_MS,
+    // - или сместились более чем на ~10 м (грубо через дельту в градусах).
+    const movedEnough =
+      !last ||
+      Math.abs(last.lat - lat) > 0.0001 ||
+      Math.abs(last.lng - lng) > 0.0001
+    if (
+      now - lastPushRef.current >= LOCATION_PUSH_INTERVAL_MS ||
+      (movedEnough && now - lastPushRef.current > 5_000)
+    ) {
+      lastPushRef.current = now
+      lastPushedRef.current = { lat, lng }
+      apiUpdateMyLocation({ lat, lng, accuracy }).catch(() => {
+        // Тихо игнорируем: не критично для UX карты
+      })
+    }
+  }
+
   // Геолокация — как только карта готова
   useEffect(() => {
     if (!ready) return
@@ -232,15 +303,33 @@ export default function MapPage() {
     if (!map) return
 
     let firstFix = true
+    // Максимально допустимая погрешность (метры). Всё, что хуже — считаем это
+    // грубым Wi-Fi/IP-фиксом и игнорируем, ждём настоящий GPS.
+    const GPS_ACCURACY_THRESHOLD = 200
 
     const onSuccess: PositionCallback = (pos) => {
       const { latitude, longitude, accuracy } = pos.coords
+
+      // Отфильтровываем «мусорные» IP/Wi-Fi фиксы: если у нас ещё не было
+      // точной позиции, а этот фикс явно грубый — просто игнорируем его.
+      if (
+        accuracy > GPS_ACCURACY_THRESHOLD &&
+        (!coordsRef.current ||
+          accuracy > (coordsRef.current.accuracy ?? Infinity))
+      ) {
+        if (!coordsRef.current) {
+          setStatus(
+            `Ждём GPS… (пока ±${Math.round(accuracy)} м — это IP/Wi-Fi)`,
+          )
+        }
+        return
+      }
+
       const next = { lat: latitude, lng: longitude, accuracy }
       coordsRef.current = next
       setCoords(next)
       setError(null)
       setStatus('')
-
 
       const point: [number, number] = [latitude, longitude]
 
@@ -253,8 +342,8 @@ export default function MapPage() {
             point,
             { balloonContent: 'Вы здесь', hintContent: 'Вы здесь' },
             {
-              preset: 'islands#greenCircleDotIcon',
-              iconColor: '#39ff14',
+              preset: 'islands#redCircleDotIcon',
+              iconColor: '#ff2a2a',
             },
           )
           map.geoObjects.add(meMarkerRef.current)
@@ -267,8 +356,8 @@ export default function MapPage() {
             [point, accuracy],
             {},
             {
-              fillColor: '#39ff1422',
-              strokeColor: '#39ff14',
+              fillColor: '#ff2a2a22',
+              strokeColor: '#ff2a2a',
               strokeOpacity: 0.7,
               strokeWidth: 1,
             },
@@ -290,9 +379,9 @@ export default function MapPage() {
         if (!meMarkerRef.current) {
           meMarkerRef.current = L.circleMarker(point, {
             radius: 7,
-            color: '#39ff14',
+            color: '#ff2a2a',
             weight: 2,
-            fillColor: '#39ff14',
+            fillColor: '#ff2a2a',
             fillOpacity: 0.9,
           })
             .addTo(map)
@@ -304,10 +393,10 @@ export default function MapPage() {
         if (!accuracyCircleRef.current) {
           accuracyCircleRef.current = L.circle(point, {
             radius: accuracy,
-            color: '#39ff14',
+            color: '#ff2a2a',
             weight: 1,
             opacity: 0.7,
-            fillColor: '#39ff14',
+            fillColor: '#ff2a2a',
             fillOpacity: 0.13,
           }).addTo(map)
         } else {
@@ -322,6 +411,9 @@ export default function MapPage() {
           firstFix = false
         }
       }
+
+      // Отправляем свои координаты на бэкенд (для других райдеров).
+      pushMyLocation(latitude, longitude, accuracy)
     }
 
     // Быстрый первый фикс (Wi-Fi/IP) — без пробуждения GPS,
@@ -342,17 +434,11 @@ export default function MapPage() {
       }
     }
 
-    try {
-      navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-        enableHighAccuracy: false,
-        maximumAge: 60000,
-        timeout: 10000,
-      })
-    } catch {
-      /* noop */
-    }
+    setStatus('Ждём GPS…')
 
-    // Постоянный высокоточный трекинг GPS.
+    // Только высокоточный GPS-трекинг. Никаких быстрых Wi-Fi/IP fallback'ов —
+    // они давали грубую позицию (иногда километры вбок), которая перебивала
+    // настоящий GPS-фикс.
     // Примечание: на десктопах без GPS macOS/CoreLocation периодически пишет
     // в консоль «kCLErrorLocationUnknown». Это системный лог браузера, не JS-
     // ошибка. Мы фильтруем его в фильтре console (см. main.tsx / setupConsole).
@@ -361,8 +447,8 @@ export default function MapPage() {
       onError,
       {
         enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 20000,
+        maximumAge: 0,
+        timeout: 30000,
       },
     )
 
@@ -374,7 +460,111 @@ export default function MapPage() {
     }
   }, [ready])
 
+  // Периодически подгружаем последние координаты других райдеров
+  useEffect(() => {
+    if (!ready) return
+    let alive = true
 
+    const fetchOnce = async () => {
+      try {
+        const list = await apiListUserLocations(RIDERS_MAX_AGE_MIN)
+        if (alive) setRiders(list)
+      } catch {
+        // Тихо: карта продолжает работать, просто без чужих меток.
+      }
+    }
+
+    fetchOnce()
+    const timer = window.setInterval(fetchOnce, LOCATION_POLL_INTERVAL_MS)
+
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [ready])
+
+  // Отрисовка / обновление маркеров других райдеров
+  useEffect(() => {
+    if (!ready) return
+    const map = mapRef.current
+    if (!map) return
+
+    const markers = riderMarkersRef.current
+    const nextIds = new Set(riders.map((r) => r.id))
+
+    // Удаляем «пропавших» райдеров.
+    for (const [id, marker] of markers.entries()) {
+      if (!nextIds.has(id)) {
+        try {
+          if (USE_YANDEX) {
+            map.geoObjects.remove(marker)
+          } else {
+            marker.remove()
+          }
+        } catch {
+          /* noop */
+        }
+        markers.delete(id)
+      }
+    }
+
+    // Добавляем/обновляем актуальных.
+    for (const r of riders) {
+      const point: [number, number] = [r.lat, r.lng]
+      const title = r.full_name || r.username
+      const label = `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
+
+      const existing = markers.get(r.id)
+
+      if (USE_YANDEX) {
+        const ymaps = window.ymaps
+        if (!ymaps) continue
+        if (!existing) {
+          const placemark = new ymaps.Placemark(
+            point,
+            {
+              balloonContent: label,
+              hintContent: title,
+              iconContent: (title[0] || '?').toUpperCase(),
+            },
+            {
+              preset: 'islands#blueCircleIcon',
+              iconColor: '#2a6bff',
+            },
+          )
+          map.geoObjects.add(placemark)
+          markers.set(r.id, placemark)
+        } else {
+          existing.geometry.setCoordinates(point)
+          existing.properties.set({
+            balloonContent: label,
+            hintContent: title,
+            iconContent: (title[0] || '?').toUpperCase(),
+          })
+        }
+      } else {
+        const L = window.L
+        if (!L) continue
+        if (!existing) {
+          const marker = L.circleMarker(point, {
+            radius: 7,
+            color: '#2a6bff',
+            weight: 2,
+            fillColor: '#2a6bff',
+            fillOpacity: 0.85,
+          })
+            .addTo(map)
+            .bindTooltip(label, { direction: 'top', offset: [0, -6] })
+            .bindPopup(label)
+          markers.set(r.id, marker)
+        } else {
+          existing.setLatLng(point)
+          existing.setTooltipContent(label)
+          existing.setPopupContent(label)
+        }
+      }
+    }
+  }, [riders, ready])
 
   const centerOnMe = () => {
     const map = mapRef.current
@@ -398,7 +588,7 @@ export default function MapPage() {
               : coords
               ? `Ваши координаты: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
                   5,
-                )}  ·  точность ±${Math.round(coords.accuracy)} м`
+                )}  ·  точность ±${Math.round(coords.accuracy)} м  ·  на карте ${riders.length} райдер(ов)`
               : status}
           </p>
         </div>

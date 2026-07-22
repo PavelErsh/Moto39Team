@@ -71,7 +71,7 @@ export default function CabinetPage() {
         </div>
         <div className="cabinet__actions">
           <Link to="/moto" className="btn btn-ghost btn-sm">
-            🏍 Мой гараж
+            🏍️ Мой гараж
           </Link>
           <Link
             to={`/u/${encodeURIComponent(user.username)}`}

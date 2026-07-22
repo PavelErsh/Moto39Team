@@ -56,7 +56,7 @@ export default function RidersPage() {
                   </div>
                   <div className="muted">@{u.username}</div>
                   <div className="rider-card__count">
-                    🏍 {u.motorcycles.length}
+                    🏍️ {u.motorcycles.length}
                   </div>
                 </div>
               </Link>

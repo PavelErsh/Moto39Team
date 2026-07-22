@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { apiListEvents, type EventItem } from '../api/events'
 
@@ -135,35 +136,53 @@ export default function CalendarPage() {
             return (
               <li
                 key={ev.id}
-                className={`event-card ${past ? 'is-past' : ''}`}
+                className={`event-card ${past ? 'is-past' : ''} ${
+                  ev.cover_image_url ? 'has-cover' : ''
+                }`}
               >
-                <div className="event-card__date" aria-hidden="true">
-                  <span className="event-card__day">{day}</span>
-                  <span className="event-card__month">{month}</span>
-                  <span className="event-card__weekday">{weekday}</span>
-                </div>
-                <div className="event-card__body">
-                  <h3 className="event-card__title">{ev.title}</h3>
-                  {ev.description && (
-                    <p className="event-card__desc">{ev.description}</p>
+                <Link to={`/calendar/${ev.id}`} className="event-card__link">
+                  {ev.cover_image_url && (
+                    <div className="event-card__cover">
+                      <img
+                        src={ev.cover_image_url}
+                        alt=""
+                        loading="lazy"
+                      />
+                    </div>
                   )}
-                  <dl className="event-card__meta">
-                    <div className="event-card__meta-row">
-                      <dt aria-label="Дата">📅</dt>
-                      <dd>
-                        {day} {month} {year}
-                      </dd>
-                    </div>
-                    <div className="event-card__meta-row">
-                      <dt aria-label="Место">📍</dt>
-                      <dd>{ev.location}</dd>
-                    </div>
-                    <div className="event-card__meta-row">
-                      <dt aria-label="Организатор">👤</dt>
-                      <dd>{ev.organizer}</dd>
-                    </div>
-                  </dl>
-                </div>
+                  <div className="event-card__date" aria-hidden="true">
+                    <span className="event-card__day">{day}</span>
+                    <span className="event-card__month">{month}</span>
+                    <span className="event-card__weekday">{weekday}</span>
+                  </div>
+                  <div className="event-card__body">
+                    <h3 className="event-card__title">{ev.title}</h3>
+                    {ev.description && (
+                      <p className="event-card__desc">{ev.description}</p>
+                    )}
+                    <dl className="event-card__meta">
+                      <div className="event-card__meta-row">
+                        <dt aria-label="Дата">📅</dt>
+                        <dd>
+                          {day} {month} {year}
+                        </dd>
+                      </div>
+                      <div className="event-card__meta-row">
+                        <dt aria-label="Место">📍</dt>
+                        <dd>{ev.location}</dd>
+                      </div>
+                      <div className="event-card__meta-row">
+                        <dt aria-label="Организатор">👤</dt>
+                        <dd>{ev.organizer}</dd>
+                      </div>
+                    </dl>
+                    {ev.images.length > 0 && (
+                      <div className="event-card__badge">
+                        📷 {ev.images.length}
+                      </div>
+                    )}
+                  </div>
+                </Link>
               </li>
             )
           })}

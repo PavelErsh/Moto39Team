@@ -7,6 +7,8 @@ export interface EventItem {
   organizer: string
   location: string
   description: string | null
+  cover_image_url: string | null
+  images: string[]
   created_by: number | null
   created_at: string
   updated_at: string
@@ -18,10 +20,17 @@ export interface EventPayload {
   organizer: string
   location: string
   description?: string | null
+  cover_image_url?: string | null
+  images?: string[]
 }
 
 export async function apiListEvents(): Promise<EventItem[]> {
   const res = await api.get<EventItem[]>('/events')
+  return res.data
+}
+
+export async function apiGetEvent(id: number | string): Promise<EventItem> {
+  const res = await api.get<EventItem>(`/events/${id}`)
   return res.data
 }
 
@@ -40,4 +49,17 @@ export async function apiUpdateEvent(
 
 export async function apiDeleteEvent(id: number): Promise<void> {
   await api.delete(`/events/${id}`)
+}
+
+export async function apiUploadEventImage(
+  file: File,
+): Promise<{ url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  // См. references.ts: не задаём Content-Type вручную, чтобы axios сам
+  // выставил корректный multipart/form-data с boundary.
+  const res = await api.post<{ url: string }>('/events/upload-image', form, {
+    headers: { 'Content-Type': undefined as unknown as string },
+  })
+  return res.data
 }

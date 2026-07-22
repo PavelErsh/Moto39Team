@@ -11,11 +11,16 @@ import GaragePage from './pages/GaragePage'
 import UserProfilePage from './pages/UserProfilePage'
 import RidersPage from './pages/RidersPage'
 import CalendarPage from './pages/CalendarPage'
+import EventDetailPage from './pages/EventDetailPage'
 import AdminPage from './pages/AdminPage'
+import ReferencesPage from './pages/ReferencesPage'
+import ReferenceDetailPage from './pages/ReferenceDetailPage'
 import { useAuth } from './context/AuthContext'
+import { useTwemoji } from './hooks/useTwemoji'
 
 export default function App() {
   const { loading } = useAuth()
+  useTwemoji()
 
   if (loading) {
     return (
@@ -74,6 +79,9 @@ export default function App() {
           }
         />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/calendar/:id" element={<EventDetailPage />} />
+        <Route path="/reference" element={<ReferencesPage />} />
+        <Route path="/reference/:slug" element={<ReferenceDetailPage />} />
         <Route
           path="/admin"
           element={

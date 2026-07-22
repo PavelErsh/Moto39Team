@@ -4,6 +4,12 @@ from app.schemas.motorcycle import (
     MotorcycleRead,
     MotorcycleUpdate,
 )
+from app.schemas.reference import (
+    ImageUploadResponse,
+    ReferenceCreate,
+    ReferenceRead,
+    ReferenceUpdate,
+)
 from app.schemas.token import RefreshTokenRequest, Token, TokenPayload
 from app.schemas.user import (
     UserCreate,
@@ -28,4 +34,8 @@ __all__ = [
     "EventCreate",
     "EventRead",
     "EventUpdate",
+    "ReferenceCreate",
+    "ReferenceRead",
+    "ReferenceUpdate",
+    "ImageUploadResponse",
 ]

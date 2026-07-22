@@ -1,6 +1,9 @@
 """Точка входа FastAPI-приложения (чистый REST API для React-фронтенда)."""
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
@@ -28,6 +31,15 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(api_router, prefix="/api/v1")
+
+    # Раздача загруженных файлов (изображения справочника и т.п.)
+    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/media",
+        StaticFiles(directory=str(upload_dir)),
+        name="media",
+    )
 
     @app.get("/", tags=["root"])
     async def root() -> dict[str, str]:

@@ -48,7 +48,7 @@ export default function UserProfilePage() {
       </header>
 
       <div className="garage__head">
-        <h2 className="garage__title">🏍 Гараж</h2>
+        <h2 className="garage__title">🏍️ Гараж</h2>
         <Link to="/riders" className="btn btn-ghost btn-sm">
           Все райдеры
         </Link>
@@ -56,7 +56,7 @@ export default function UserProfilePage() {
 
       {profile.motorcycles.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state__icon">🏍</div>
+          <div className="empty-state__icon">🏍️</div>
           <p className="muted">У пользователя пока нет мотоциклов</p>
         </div>
       ) : (

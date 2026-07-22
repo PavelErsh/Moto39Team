@@ -14,6 +14,10 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
 
+    # Каталог для загружаемых файлов (изображения справочника и т.п.).
+    # Раздаётся по префиксу /media (см. app/main.py).
+    UPLOAD_DIR: str = "uploads"
+
     SECRET_KEY: str = "change-me-to-a-long-random-secret"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

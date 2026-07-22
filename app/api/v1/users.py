@@ -3,9 +3,27 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentActiveUser, CurrentSuperuser, DbSession
 from app.crud.user import user_crud
-from app.schemas.user import UserPublic, UserRead, UserUpdate
+from app.schemas.user import (
+    LocationUpdate,
+    UserLocation,
+    UserPublic,
+    UserRead,
+    UserUpdate,
+)
 
 router = APIRouter()
+
+
+def _to_location(user) -> UserLocation:
+    return UserLocation(
+        id=user.id,
+        username=user.username,
+        full_name=user.full_name,
+        lat=user.last_lat,
+        lng=user.last_lng,
+        accuracy=user.last_accuracy,
+        last_seen_at=user.last_seen_at,
+    )
 
 
 @router.get(
@@ -42,6 +60,39 @@ async def list_users(
 ) -> list[UserPublic]:
     users = await user_crud.list_all(db)
     return [UserPublic.model_validate(u) for u in users]
+
+
+@router.post(
+    "/me/location",
+    response_model=UserLocation,
+    summary="Обновить свои координаты",
+)
+async def update_my_location(
+    data: LocationUpdate,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+) -> UserLocation:
+    user = await user_crud.update_location(
+        db, current_user, data.lat, data.lng, data.accuracy
+    )
+    return _to_location(user)
+
+
+@router.get(
+    "/locations",
+    response_model=list[UserLocation],
+    summary="Последние координаты всех активных райдеров",
+)
+async def list_user_locations(
+    current_user: CurrentActiveUser,
+    db: DbSession,
+    max_age_minutes: int | None = 60 * 24,
+) -> list[UserLocation]:
+    users = await user_crud.list_with_location(
+        db, max_age_minutes=max_age_minutes
+    )
+    # Себя из списка исключаем — на карте мы уже отображаемся отдельной меткой.
+    return [_to_location(u) for u in users if u.id != current_user.id]
 
 
 @router.get(

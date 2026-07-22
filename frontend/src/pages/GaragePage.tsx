@@ -145,8 +145,8 @@ export default function GaragePage() {
     <section className="garage">
       <header className="garage__head">
         <div>
-          <h1 className="garage__title">🏍 Мой гараж</h1>
-          <p className="muted">Мотоциклы, которые ты рассекаешь по асфальту</p>
+          <h1 className="garage__title">🏍️ Мой гараж</h1>
+          <p className="muted">Мотоциклы, на которых ты рассекаешь по асфальту</p>
         </div>
         {!showForm && (
           <button
@@ -277,7 +277,7 @@ export default function GaragePage() {
         <div className="muted">Загрузка…</div>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state__icon">🏍</div>
+          <div className="empty-state__icon">🏍️</div>
           <p className="muted">Гараж пуст. Добавь свой первый мотоцикл.</p>
         </div>
       ) : (

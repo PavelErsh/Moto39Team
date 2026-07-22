@@ -1,8 +1,13 @@
 import axios, { AxiosError } from 'axios'
 
+// По умолчанию используем относительный путь — тогда запросы идут по тому же
+// протоколу и хосту, что и фронт (например, https://192.168.x.x:5173/api/v1),
+// а Vite dev-сервер проксирует их на локальный бэкенд FastAPI.
+// Это критично для мобильных браузеров, которые блокируют смешанный контент
+// (HTTPS-страница → HTTP API) и не разрешают доступ к геолокации на http.
 const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  'http://localhost:8000/api/v1'
+  (import.meta.env.VITE_API_URL as string | undefined) || '/api/v1'
+
 
 export const api = axios.create({
   baseURL: API_URL,

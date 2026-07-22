@@ -65,3 +65,34 @@ export async function apiListUsers(): Promise<PublicUser[]> {
   const res = await api.get<PublicUser[]>('/users')
   return res.data
 }
+
+export interface UserLocation {
+  id: number
+  username: string
+  full_name: string | null
+  lat: number
+  lng: number
+  accuracy: number | null
+  last_seen_at: string
+}
+
+export async function apiUpdateMyLocation(payload: {
+  lat: number
+  lng: number
+  accuracy?: number | null
+}): Promise<UserLocation> {
+  const res = await api.post<UserLocation>('/users/me/location', payload)
+  return res.data
+}
+
+export async function apiListUserLocations(
+  maxAgeMinutes?: number,
+): Promise<UserLocation[]> {
+  const res = await api.get<UserLocation[]>('/users/locations', {
+    params:
+      maxAgeMinutes !== undefined
+        ? { max_age_minutes: maxAgeMinutes }
+        : undefined,
+  })
+  return res.data
+}

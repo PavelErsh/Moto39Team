@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
@@ -6,6 +13,7 @@ import {
   apiDeleteEvent,
   apiListEvents,
   apiUpdateEvent,
+  apiUploadEventImage,
   type EventItem,
   type EventPayload,
 } from '../api/events'
@@ -14,17 +22,56 @@ import {
   apiAdminSetActive,
   apiAdminSetSuperuser,
 } from '../api/admin'
+import {
+  apiCreateReference,
+  apiDeleteReference,
+  apiListReferences,
+  apiUpdateReference,
+  apiUploadReferenceImage,
+  type ReferenceItem,
+  type ReferencePayload,
+} from '../api/references'
 import type { User } from '../api/auth'
 import { useAuth } from '../context/AuthContext'
 
-type Tab = 'events' | 'users'
+type Tab = 'events' | 'users' | 'references'
 
-const EMPTY_FORM = {
+const EMPTY_EVENT_FORM = {
   event_date: '',
   title: '',
   organizer: '',
   location: '',
   description: '',
+  cover_image_url: '',
+  images: [] as string[],
+}
+
+const EMPTY_REF_FORM = {
+  slug: '',
+  title: '',
+  category: '',
+  summary: '',
+  content: '',
+  cover_image_url: '',
+  images: [] as string[],
+}
+
+function slugify(s: string): string {
+  const map: Record<string, string> = {
+    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh',
+    з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+    п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts',
+    ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
+    я: 'ya',
+  }
+  return s
+    .toLowerCase()
+    .split('')
+    .map((ch) => (map[ch] !== undefined ? map[ch] : ch))
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 160)
 }
 
 export default function AdminPage() {
@@ -38,13 +85,27 @@ export default function AdminPage() {
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [form, setForm] = useState({ ...EMPTY_EVENT_FORM })
   const [busy, setBusy] = useState(false)
 
   // users
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
+
+  // references
+  const [refs, setRefs] = useState<ReferenceItem[]>([])
+  const [refsLoading, setRefsLoading] = useState(false)
+  const [refsError, setRefsError] = useState<string | null>(null)
+  const [refEditingId, setRefEditingId] = useState<number | null>(null)
+  const [showRefForm, setShowRefForm] = useState(false)
+  const [refForm, setRefForm] = useState({ ...EMPTY_REF_FORM })
+  const [refSlugTouched, setRefSlugTouched] = useState(false)
+  const [refBusy, setRefBusy] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement | null>(null)
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
+  const eventCoverInputRef = useRef<HTMLInputElement | null>(null)
+  const eventGalleryInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true)
@@ -70,11 +131,24 @@ export default function AdminPage() {
     }
   }, [])
 
+  const loadRefs = useCallback(async () => {
+    setRefsLoading(true)
+    setRefsError(null)
+    try {
+      setRefs(await apiListReferences())
+    } catch (err) {
+      setRefsError(extractApiError(err))
+    } finally {
+      setRefsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!user?.is_superuser) return
     if (tab === 'events') void loadEvents()
-    else void loadUsers()
-  }, [tab, user, loadEvents, loadUsers])
+    else if (tab === 'users') void loadUsers()
+    else if (tab === 'references') void loadRefs()
+  }, [tab, user, loadEvents, loadUsers, loadRefs])
 
   if (authLoading) return null
   if (!user) return <Navigate to="/login" replace />
@@ -95,7 +169,7 @@ export default function AdminPage() {
   }
 
   function resetForm() {
-    setForm({ ...EMPTY_FORM })
+    setForm({ ...EMPTY_EVENT_FORM })
     setEditingId(null)
   }
 
@@ -112,8 +186,53 @@ export default function AdminPage() {
       organizer: e.organizer,
       location: e.location,
       description: e.description ?? '',
+      cover_image_url: e.cover_image_url ?? '',
+      images: [...e.images],
     })
     setShowForm(true)
+  }
+
+  async function onEventCoverPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    setEventsError(null)
+    try {
+      const { url } = await apiUploadEventImage(file)
+      setForm((f) => ({ ...f, cover_image_url: url }))
+    } catch (err) {
+      setEventsError(extractApiError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onEventGalleryPick(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    setBusy(true)
+    setEventsError(null)
+    try {
+      const uploaded: string[] = []
+      for (const f of files) {
+        const { url } = await apiUploadEventImage(f)
+        uploaded.push(url)
+      }
+      setForm((f) => ({ ...f, images: [...f.images, ...uploaded] }))
+    } catch (err) {
+      setEventsError(extractApiError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function removeEventGalleryImage(url: string) {
+    setForm((f) => ({
+      ...f,
+      images: f.images.filter((u) => u !== url),
+    }))
   }
 
   async function onSubmit(e: FormEvent) {
@@ -136,6 +255,8 @@ export default function AdminPage() {
         organizer: form.organizer.trim(),
         location: form.location.trim(),
         description: form.description.trim() || null,
+        cover_image_url: form.cover_image_url.trim() || null,
+        images: form.images,
       }
       if (editingId != null) {
         await apiUpdateEvent(editingId, payload)
@@ -186,12 +307,150 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------------- REFERENCES ----------------------
+
+  function resetRefForm() {
+    setRefForm({ ...EMPTY_REF_FORM })
+    setRefEditingId(null)
+    setRefSlugTouched(false)
+  }
+
+  function startRefCreate() {
+    resetRefForm()
+    setShowRefForm(true)
+  }
+
+  function startRefEdit(r: ReferenceItem) {
+    setRefEditingId(r.id)
+    setRefForm({
+      slug: r.slug,
+      title: r.title,
+      category: r.category ?? '',
+      summary: r.summary ?? '',
+      content: r.content ?? '',
+      cover_image_url: r.cover_image_url ?? '',
+      images: [...r.images],
+    })
+    setRefSlugTouched(true)
+    setShowRefForm(true)
+  }
+
+  function onRefTitleChange(value: string) {
+    setRefForm((f) => ({
+      ...f,
+      title: value,
+      slug: refSlugTouched ? f.slug : slugify(value),
+    }))
+  }
+
+  function onRefSlugChange(value: string) {
+    setRefSlugTouched(true)
+    setRefForm((f) => ({ ...f, slug: value }))
+  }
+
+  async function onRefSubmit(e: FormEvent) {
+    e.preventDefault()
+    setRefsError(null)
+    const slug = refForm.slug.trim()
+    if (!refForm.title.trim() || !slug) {
+      setRefsError('Название и slug обязательны')
+      return
+    }
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      setRefsError('Slug может содержать только латиницу, цифры и дефис')
+      return
+    }
+    setRefBusy(true)
+    try {
+      const payload: ReferencePayload = {
+        slug,
+        title: refForm.title.trim(),
+        category: refForm.category.trim() || null,
+        summary: refForm.summary.trim() || null,
+        content: refForm.content,
+        cover_image_url: refForm.cover_image_url.trim() || null,
+        images: refForm.images,
+      }
+      if (refEditingId != null) {
+        await apiUpdateReference(refEditingId, payload)
+      } else {
+        await apiCreateReference(payload)
+      }
+      setShowRefForm(false)
+      resetRefForm()
+      await loadRefs()
+    } catch (err) {
+      setRefsError(extractApiError(err))
+    } finally {
+      setRefBusy(false)
+    }
+  }
+
+  async function onRefDelete(id: number) {
+    if (!window.confirm('Удалить эту статью?')) return
+    setRefBusy(true)
+    setRefsError(null)
+    try {
+      await apiDeleteReference(id)
+      await loadRefs()
+    } catch (err) {
+      setRefsError(extractApiError(err))
+    } finally {
+      setRefBusy(false)
+    }
+  }
+
+  async function onCoverPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setRefBusy(true)
+    setRefsError(null)
+    try {
+      const { url } = await apiUploadReferenceImage(file)
+      setRefForm((f) => ({ ...f, cover_image_url: url }))
+    } catch (err) {
+      setRefsError(extractApiError(err))
+    } finally {
+      setRefBusy(false)
+    }
+  }
+
+  async function onGalleryPick(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    setRefBusy(true)
+    setRefsError(null)
+    try {
+      const uploaded: string[] = []
+      for (const f of files) {
+        const { url } = await apiUploadReferenceImage(f)
+        uploaded.push(url)
+      }
+      setRefForm((f) => ({ ...f, images: [...f.images, ...uploaded] }))
+    } catch (err) {
+      setRefsError(extractApiError(err))
+    } finally {
+      setRefBusy(false)
+    }
+  }
+
+  function removeGalleryImage(url: string) {
+    setRefForm((f) => ({
+      ...f,
+      images: f.images.filter((u) => u !== url),
+    }))
+  }
+
   return (
     <section className="admin-page">
       <header className="admin-page__head">
         <div>
-          <h1 className="admin-page__title">⚙ Админка</h1>
-          <p className="muted">Управление мотокалендарём и пользователями</p>
+          <h1 className="admin-page__title">⚙️ Админка</h1>
+          <p className="muted">
+            Управление мотокалендарём, мотосправкой и пользователями
+          </p>
         </div>
       </header>
 
@@ -202,6 +461,13 @@ export default function AdminPage() {
           onClick={() => setTab('events')}
         >
           📅 Мероприятия
+        </button>
+        <button
+          type="button"
+          className={`admin-tab ${tab === 'references' ? 'is-active' : ''}`}
+          onClick={() => setTab('references')}
+        >
+          📖 Мотосправка
         </button>
         <button
           type="button"
@@ -291,19 +557,114 @@ export default function AdminPage() {
                       disabled={busy}
                     />
                   </label>
+                  <label className="field">
+                    <span>Обложка (URL или загрузка)</span>
+                    <input
+                      type="text"
+                      maxLength={500}
+                      placeholder="/media/events/…"
+                      value={form.cover_image_url}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          cover_image_url: e.target.value,
+                        }))
+                      }
+                      disabled={busy}
+                    />
+                    <div className="cover-actions">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={eventCoverInputRef}
+                        onChange={onEventCoverPick}
+                        hidden
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => eventCoverInputRef.current?.click()}
+                        disabled={busy}
+                      >
+                        Загрузить обложку…
+                      </button>
+                      {form.cover_image_url && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() =>
+                            setForm((f) => ({ ...f, cover_image_url: '' }))
+                          }
+                          disabled={busy}
+                        >
+                          Убрать
+                        </button>
+                      )}
+                    </div>
+                    {form.cover_image_url && (
+                      <div className="cover-preview">
+                        <img src={form.cover_image_url} alt="обложка" />
+                      </div>
+                    )}
+                  </label>
                 </div>
                 <label className="field">
-                  <span>Описание</span>
+                  <span>Описание / текст мероприятия</span>
                   <textarea
-                    rows={3}
-                    maxLength={4000}
+                    rows={10}
+                    maxLength={50000}
                     value={form.description}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, description: e.target.value }))
                     }
                     disabled={busy}
+                    placeholder="Подробности, программа, условия участия… Абзацы разделяйте пустой строкой."
                   />
                 </label>
+
+                <div className="field">
+                  <span>Прикреплённые изображения</span>
+                  <div className="cover-actions">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={eventGalleryInputRef}
+                      onChange={onEventGalleryPick}
+                      multiple
+                      hidden
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => eventGalleryInputRef.current?.click()}
+                      disabled={busy}
+                    >
+                      Добавить изображения…
+                    </button>
+                    <small className="muted">
+                      JPG / PNG / WEBP / GIF, до 16 МБ
+                    </small>
+                  </div>
+                  {form.images.length > 0 && (
+                    <div className="gallery-edit">
+                      {form.images.map((url) => (
+                        <div key={url} className="gallery-edit__item">
+                          <img src={url} alt="" loading="lazy" />
+                          <button
+                            type="button"
+                            className="gallery-edit__remove"
+                            onClick={() => removeEventGalleryImage(url)}
+                            disabled={busy}
+                            aria-label="Удалить изображение"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="form-actions">
                   <button
                     type="submit"
@@ -345,9 +706,11 @@ export default function AdminPage() {
                 <thead>
                   <tr>
                     <th>Дата</th>
+                    <th>Обложка</th>
                     <th>Название</th>
                     <th>Организатор</th>
                     <th>Место</th>
+                    <th>Изобр.</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -356,16 +719,51 @@ export default function AdminPage() {
                     <tr key={e.id}>
                       <td className="events-table__date">{e.event_date}</td>
                       <td>
+                        {e.cover_image_url ? (
+                          <div className="events-table__cover">
+                            <img
+                              src={e.cover_image_url}
+                              alt=""
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
                         <div className="events-table__title">{e.title}</div>
                         {e.description && (
                           <div className="events-table__desc">
                             {e.description}
                           </div>
                         )}
+                        {e.images.length > 0 && (
+                          <div className="events-table__thumbs">
+                            {e.images.slice(0, 6).map((url) => (
+                              <a
+                                key={url}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="events-table__thumb"
+                              >
+                                <img src={url} alt="" loading="lazy" />
+                              </a>
+                            ))}
+                            {e.images.length > 6 && (
+                              <span className="events-table__thumb-more">
+                                +{e.images.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td>{e.organizer}</td>
                       <td>{e.location}</td>
+                      <td>{e.images.length + (e.cover_image_url ? 1 : 0)}</td>
                       <td className="events-table__actions">
+
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
@@ -379,6 +777,328 @@ export default function AdminPage() {
                           className="btn btn-ghost btn-sm btn-danger"
                           onClick={() => onDelete(e.id)}
                           disabled={busy}
+                        >
+                          Удалить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'references' && (
+        <div className="admin-section">
+          <div className="admin-section__head">
+            <h2 className="admin-section__title">Мотосправка</h2>
+            {!showRefForm && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={startRefCreate}
+              >
+                + Добавить статью
+              </button>
+            )}
+          </div>
+
+          {refsError && <div className="alert alert-error">{refsError}</div>}
+
+          {showRefForm && (
+            <div className="edit-card">
+              <h3 className="garage__form-title">
+                {refEditingId != null
+                  ? 'Редактировать статью'
+                  : 'Новая статья'}
+              </h3>
+              <form className="form" onSubmit={onRefSubmit} noValidate>
+                <div className="grid-2">
+                  <label className="field">
+                    <span>Название *</span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={255}
+                      value={refForm.title}
+                      onChange={(e) => onRefTitleChange(e.target.value)}
+                      disabled={refBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>
+                      Slug * <small className="muted">(URL, латиница)</small>
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={160}
+                      pattern="[a-z0-9\-]+"
+                      value={refForm.slug}
+                      onChange={(e) => onRefSlugChange(e.target.value)}
+                      disabled={refBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Категория</span>
+                    <input
+                      type="text"
+                      maxLength={100}
+                      placeholder="Техника, Право, Экипировка…"
+                      value={refForm.category}
+                      onChange={(e) =>
+                        setRefForm((f) => ({
+                          ...f,
+                          category: e.target.value,
+                        }))
+                      }
+                      disabled={refBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Обложка (URL или загрузка)</span>
+                    <input
+                      type="text"
+                      maxLength={500}
+                      placeholder="/media/references/…"
+                      value={refForm.cover_image_url}
+                      onChange={(e) =>
+                        setRefForm((f) => ({
+                          ...f,
+                          cover_image_url: e.target.value,
+                        }))
+                      }
+                      disabled={refBusy}
+                    />
+                    <div className="cover-actions">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={coverInputRef}
+                        onChange={onCoverPick}
+                        hidden
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => coverInputRef.current?.click()}
+                        disabled={refBusy}
+                      >
+                        Загрузить обложку…
+                      </button>
+                      {refForm.cover_image_url && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() =>
+                            setRefForm((f) => ({
+                              ...f,
+                              cover_image_url: '',
+                            }))
+                          }
+                          disabled={refBusy}
+                        >
+                          Убрать
+                        </button>
+                      )}
+                    </div>
+                    {refForm.cover_image_url && (
+                      <div className="cover-preview">
+                        <img
+                          src={refForm.cover_image_url}
+                          alt="обложка"
+                        />
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                <label className="field">
+                  <span>Краткое описание</span>
+                  <textarea
+                    rows={2}
+                    maxLength={500}
+                    value={refForm.summary}
+                    onChange={(e) =>
+                      setRefForm((f) => ({ ...f, summary: e.target.value }))
+                    }
+                    disabled={refBusy}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Текст статьи</span>
+                  <textarea
+                    rows={12}
+                    maxLength={50000}
+                    value={refForm.content}
+                    onChange={(e) =>
+                      setRefForm((f) => ({ ...f, content: e.target.value }))
+                    }
+                    disabled={refBusy}
+                    placeholder="Основной текст справки. Абзацы отделяются пустой строкой."
+                  />
+                </label>
+
+                <div className="field">
+                  <span>Прикреплённые изображения</span>
+                  <div className="cover-actions">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={galleryInputRef}
+                      onChange={onGalleryPick}
+                      multiple
+                      hidden
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => galleryInputRef.current?.click()}
+                      disabled={refBusy}
+                    >
+                      Добавить изображения…
+                    </button>
+                    <small className="muted">
+                      JPG / PNG / WEBP / GIF, до 8 МБ
+                    </small>
+                  </div>
+                  {refForm.images.length > 0 && (
+                    <div className="gallery-edit">
+                      {refForm.images.map((url) => (
+                        <div key={url} className="gallery-edit__item">
+                          <img src={url} alt="" loading="lazy" />
+                          <button
+                            type="button"
+                            className="gallery-edit__remove"
+                            onClick={() => removeGalleryImage(url)}
+                            disabled={refBusy}
+                            aria-label="Удалить изображение"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={refBusy}
+                  >
+                    {refBusy
+                      ? 'Сохраняем…'
+                      : refEditingId != null
+                        ? 'Сохранить'
+                        : 'Опубликовать'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setShowRefForm(false)
+                      resetRefForm()
+                    }}
+                    disabled={refBusy}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {refsLoading ? (
+            <div className="muted">Загрузка…</div>
+          ) : refs.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state__icon">📖</div>
+              <p className="muted">В справочнике пока нет статей.</p>
+            </div>
+          ) : (
+            <div className="events-table-wrap">
+              <table className="events-table">
+                <thead>
+                  <tr>
+                    <th>Категория</th>
+                    <th>Обложка</th>
+                    <th>Название</th>
+                    <th>Slug</th>
+                    <th>Изобр.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refs.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.category || '—'}</td>
+                      <td>
+                        {r.cover_image_url ? (
+                          <div className="events-table__cover">
+                            <img
+                              src={r.cover_image_url}
+                              alt=""
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="events-table__title">
+                          <Link to={`/reference/${r.slug}`}>{r.title}</Link>
+                        </div>
+                        {r.summary && (
+                          <div className="events-table__desc">
+                            {r.summary}
+                          </div>
+                        )}
+                        {r.images.length > 0 && (
+                          <div className="events-table__thumbs">
+                            {r.images.slice(0, 6).map((url) => (
+                              <a
+                                key={url}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="events-table__thumb"
+                              >
+                                <img src={url} alt="" loading="lazy" />
+                              </a>
+                            ))}
+                            {r.images.length > 6 && (
+                              <span className="events-table__thumb-more">
+                                +{r.images.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <code className="mono">{r.slug}</code>
+                      </td>
+                      <td>{r.images.length + (r.cover_image_url ? 1 : 0)}</td>
+
+                      <td className="events-table__actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => startRefEdit(r)}
+                          disabled={refBusy}
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() => onRefDelete(r.id)}
+                          disabled={refBusy}
                         >
                           Удалить
                         </button>

@@ -1,4 +1,6 @@
 """CRUD-операции для пользователя."""
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +58,48 @@ class UserCRUD:
         await db.commit()
         await db.refresh(user)
         return user
+
+    async def update_location(
+        self,
+        db: AsyncSession,
+        user: User,
+        lat: float,
+        lng: float,
+        accuracy: float | None,
+    ) -> User:
+        user.last_lat = lat
+        user.last_lng = lng
+        user.last_accuracy = accuracy
+        user.last_seen_at = datetime.now(timezone.utc)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    async def list_with_location(
+        self, db: AsyncSession, max_age_minutes: int | None = None
+    ) -> list[User]:
+        """Список пользователей, у которых есть последние координаты.
+
+        Если задан max_age_minutes — отфильтровать по свежести.
+        """
+        stmt = (
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                User.last_lat.is_not(None),
+                User.last_lng.is_not(None),
+                User.last_seen_at.is_not(None),
+            )
+            .order_by(User.username)
+        )
+        if max_age_minutes is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(
+                minutes=max_age_minutes
+            )
+            stmt = stmt.where(User.last_seen_at >= cutoff)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     async def authenticate(
         self, db: AsyncSession, username: str, password: str
