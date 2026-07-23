@@ -1,8 +1,9 @@
 """Конфигурация приложения на основе переменных окружения."""
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -25,7 +26,13 @@ class Settings(BaseSettings):
 
     # CORS: список разрешённых origin через запятую или '*' — разрешить все.
     # По умолчанию — типовые локальные порты Vite (dev/preview).
-    CORS_ORIGINS: list[str] = [
+    #
+    # ВАЖНО: `NoDecode` отключает автоматический JSON-парсинг значения из
+    # переменных окружения (pydantic-settings v2 иначе пытается json.loads()
+    # ДО валидаторов и падает на строке вида "a,b,c"). С NoDecode значение
+    # приходит в валидатор _split_cors как есть — и корректно бьётся по
+    # запятой.
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
