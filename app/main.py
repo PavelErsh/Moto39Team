@@ -23,7 +23,7 @@ def create_app() -> FastAPI:
     # CORS для React dev-сервера (Vite: 5173/5174/5175 и т.п.)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=settings.cors_origins_list,
         allow_origin_regex=settings.CORS_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
