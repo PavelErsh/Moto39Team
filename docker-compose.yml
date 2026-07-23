@@ -2,35 +2,44 @@ services:
   db:
     image: postgres:16-alpine
     container_name: moto39team-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: moto39team
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-moto39team}
+    # В проде порт наружу не публикуем — доступ только внутри docker-сети.
+    # Для локальной разработки раскомментируйте:
+    # ports:
+    #   - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   api:
     build: .
     container_name: moto39team-api
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/moto39team
-      SECRET_KEY: change-me-to-a-long-random-secret
-      DEBUG: "False"
+      # Внутри docker сети база всегда доступна как хост "db".
+      # Значения POSTGRES_* берутся из .env (см. deploy/env.example).
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-moto39team}
     ports:
-      - "8000:8000"
+      # Слушаем ТОЛЬКО на localhost — снаружи ходят только через nginx.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Загруженные файлы (изображения справочника и т.п.) переживут пересборку контейнера.
+      - ./uploads:/app/uploads
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
 volumes:
   pg_data:

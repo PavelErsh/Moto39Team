@@ -24,3 +24,6 @@ htmlcov/
 test.db
 uploads/
 venv/
+
+# deploy
+deploy/deploy.env

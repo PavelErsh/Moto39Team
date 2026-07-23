@@ -1,6 +1,7 @@
 .PHONY: install run dev lint format test migrate makemigrations stamp \
         create-admin make-admin list-users \
-        docker-up docker-down front-install front-dev front-build front-lint
+        docker-up docker-down front-install front-dev front-build front-lint \
+        deploy deploy-setup
 
 
 # ---------- Backend ----------
@@ -73,3 +74,15 @@ front-build:
 
 front-lint:
 	cd frontend && npm run lint
+
+# ---------- Deploy ----------
+# Первичная установка на сервер (docker, nginx, node, SSL и т.д.).
+# Требует настроенного файла deploy/deploy.env
+# (создать: cp deploy/env.example deploy/deploy.env).
+deploy-setup:
+	./deploy/deploy.sh --setup
+
+# Обновление уже задеплоенного проекта: git pull + пересборка backend/frontend.
+# Одна команда — и последняя версия на сервере.
+deploy:
+	./deploy/deploy.sh

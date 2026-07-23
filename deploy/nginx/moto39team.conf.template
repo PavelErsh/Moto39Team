@@ -1,0 +1,69 @@
+# =========================================================================
+# Nginx-конфиг для Moto39Team.
+#
+# Плейсхолдеры __DOMAIN__ / __DOMAIN_WWW__ / __PROJECT_DIR__ подставляются
+# скриптом deploy/setup-server.sh при установке. Итоговый файл кладётся в
+# /etc/nginx/sites-available/moto39team и симлинкается в sites-enabled.
+#
+# HTTPS/редирект на 443 добавит certbot --nginx (см. setup-server.sh).
+# =========================================================================
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__ __DOMAIN_WWW__;
+
+    # webroot для валидации Let's Encrypt (используется certbot).
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    root __PROJECT_DIR__/frontend/dist;
+    index index.html;
+
+    # Разрешаем загружать изображения справочника до ~20 МБ.
+    client_max_body_size 20m;
+
+    # ── React SPA (history mode) ────────────────────────────────
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ── FastAPI ──────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # ── Загруженные файлы (uploads/) ─────────────────────────────
+    location /media/ {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    # ── Swagger / OpenAPI ────────────────────────────────────────
+    location = /docs         { proxy_pass http://127.0.0.1:8000; }
+    location = /redoc        { proxy_pass http://127.0.0.1:8000; }
+    location = /openapi.json { proxy_pass http://127.0.0.1:8000; }
+    location = /health       { proxy_pass http://127.0.0.1:8000; }
+
+    # ── Кэш статики Vite (имена файлов содержат хэш) ────────────
+    location ~* \.(?:js|css|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico)$ {
+        try_files $uri =404;
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+    }
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript
+               application/xml text/xml image/svg+xml;
+}

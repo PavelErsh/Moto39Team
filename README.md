@@ -205,13 +205,110 @@ docker compose up -d --build
 
 Поднимутся:
 
-- `db` — PostgreSQL 16 на `:5432`
-- `api` — FastAPI на <http://localhost:8000> (с автоприменением миграций)
+- `db` — PostgreSQL 16 (только внутри docker-сети)
+- `api` — FastAPI на <http://127.0.0.1:8000> (с автоприменением миграций)
 
 Остановить:
 
 ```bash
 docker compose down
+```
+
+## 🚢 Деплой на прод-сервер одной командой
+
+В репозитории есть готовые скрипты в каталоге `deploy/`:
+
+| Файл                                    | Что делает                                                             |
+|-----------------------------------------|------------------------------------------------------------------------|
+| `deploy/env.example`                    | Шаблон конфигурации (SSH-хост, домен, email для Let's Encrypt)         |
+| `deploy/deploy.sh`                      | Точка входа: с локальной машины идёт по SSH и запускает setup/update   |
+| `deploy/setup-server.sh`                | Первичная установка на чистый Ubuntu (docker, nginx, node, SSL, ...)   |
+| `deploy/update.sh`                      | Обновление проекта: `git pull` + пересборка backend + frontend         |
+| `deploy/nginx/moto39team.conf.template` | Nginx-конфиг: React SPA + прокси на FastAPI (`/api`, `/media`, `/docs`)|
+
+### Требования к серверу
+
+- **Ubuntu 22.04 / 24.04**, доступ по SSH.
+- DNS вашего домена уже указывает A-записью на IP сервера.
+- На сервере есть пользователь с правами `sudo` (например, `deploy`).
+
+### Первый деплой (полная установка)
+
+На **локальной машине** в корне проекта:
+
+```bash
+cp deploy/env.example deploy/deploy.env
+nano deploy/deploy.env      # укажи SERVER_HOST, DOMAIN, LETSENCRYPT_EMAIL и т.д.
+
+make deploy-setup
+# или: ./deploy/deploy.sh --setup
+```
+
+Скрипт сам:
+
+1. Установит docker + docker compose plugin, nginx, node 20, certbot.
+2. Настроит firewall (`ufw`) — открыты `OpenSSH` и `Nginx Full`.
+3. Склонирует репозиторий в `SERVER_PROJECT_DIR` (по умолчанию `/var/www/Moto39Team`).
+4. Создаст `.env` с автоматически сгенерированными `SECRET_KEY` и паролем БД.
+5. Поднимет backend через `docker compose` (миграции применятся автоматически).
+6. Соберёт фронтенд (`npm ci && npm run build`).
+7. Пропишет nginx-конфиг с проксированием `/api` и `/media` на FastAPI.
+8. Получит SSL-сертификат Let's Encrypt и включит редирект HTTP → HTTPS.
+
+После окончания открой `https://your-domain.ru` — сайт готов.
+
+Первого администратора создать так:
+
+```bash
+ssh deploy@your-server-ip
+cd /var/www/Moto39Team
+docker compose exec api python -m app.cli create-admin \
+    --email admin@your-domain.ru --username admin --password 'СильныйПароль!'
+```
+
+### Последующие релизы (одна команда)
+
+Закоммитил изменения → запушил в `main` → на своей машине:
+
+```bash
+make deploy
+# или: ./deploy/deploy.sh
+```
+
+Что произойдёт на сервере:
+
+- `git pull` в каталоге проекта
+- `docker compose up -d --build` (пересборка api, миграции)
+- `npm ci && npm run build` (свежая статика фронта)
+- `nginx -t && systemctl reload nginx`
+
+Ошибок нет → в проде уже новая версия.
+
+### Как это устроено
+
+```
+Интернет ──► Nginx (80/443)
+                 ├── /                 → frontend/dist (React SPA)
+                 ├── /api/…            → 127.0.0.1:8000  (FastAPI)
+                 ├── /media/…          → 127.0.0.1:8000  (загруженные файлы)
+                 └── /docs, /redoc, /openapi.json, /health → FastAPI
+Docker:
+  • moto39team-db   — PostgreSQL 16 (том pg_data)
+  • moto39team-api  — uvicorn :8000 (слушает только localhost)
+```
+
+### Полезное
+
+```bash
+# Логи backend в реальном времени
+ssh deploy@server 'cd /var/www/Moto39Team && docker compose logs -f api'
+
+# Статус контейнеров
+ssh deploy@server 'cd /var/www/Moto39Team && docker compose ps'
+
+# Обновить только nginx-конфиг (после правки шаблона)
+ssh deploy@server 'sudo cp /var/www/Moto39Team/deploy/nginx/moto39team.conf.template \
+    /etc/nginx/sites-available/moto39team && sudo nginx -t && sudo systemctl reload nginx'
 ```
 
 ## 🔐 JWT-авторизация
