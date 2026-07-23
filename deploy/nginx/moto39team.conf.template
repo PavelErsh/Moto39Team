@@ -13,6 +13,23 @@ server {
     listen [::]:80;
     server_name __DOMAIN__ __DOMAIN_WWW__;
 
+    # Явно подключаем MIME-типы (без этого nginx на некоторых сборках
+    # отдаёт .js как text/plain → браузер отклоняет module-script).
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    # Дополнительно фиксируем важнейшие типы (на случай урезанной
+    # версии /etc/nginx/mime.types).
+    types {
+        application/javascript js mjs;
+        application/wasm       wasm;
+        text/css               css;
+        image/svg+xml          svg svgz;
+        application/json       json map;
+        font/woff              woff;
+        font/woff2             woff2;
+        application/manifest+json webmanifest;
+    }
+
     # webroot для валидации Let's Encrypt (используется certbot).
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
