@@ -58,10 +58,24 @@ server {
     }
 
     # ── Загруженные файлы (uploads/) ─────────────────────────────
-    location /media/ {
+    #
+    # Важно: используем префикс `^~`, чтобы этот location имел
+    # приоритет над regex-локацией `\.(jpg|jpeg|png|...)$` ниже.
+    # Без `^~` nginx выбирает regex-локацию для файлов вида
+    # /media/events/xxxx.jpeg, пытается найти их в frontend/dist
+    # и отдаёт 404 (собственно та ошибка, которую видит браузер).
+    location ^~ /media/ {
         proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
         proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # Кэш на клиенте: файлы отдаём с уникальными именами,
+        # так что смело помечаем immutable на 30 дней.
+        expires 30d;
+        add_header Cache-Control "public, immutable";
     }
 
     # ── Swagger / OpenAPI ────────────────────────────────────────
