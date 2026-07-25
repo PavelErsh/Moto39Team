@@ -16,8 +16,13 @@ class UserCRUD:
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
-    async def list_all(self, db: AsyncSession) -> list[User]:
-        result = await db.execute(select(User).order_by(User.username))
+    async def list_all(
+        self, db: AsyncSession, *, active_only: bool = False
+    ) -> list[User]:
+        stmt = select(User).order_by(User.username)
+        if active_only:
+            stmt = stmt.where(User.is_active.is_(True))
+        result = await db.execute(stmt)
         return list(result.scalars().all())
 
     async def get_by_email(self, db: AsyncSession, email: str) -> User | None:

@@ -12,7 +12,11 @@ export default function RidersPage() {
     let alive = true
     apiListUsers()
       .then((data) => {
-        if (alive) setUsers(data)
+        if (alive) {
+          // Заблокированные пользователи не должны отображаться в общем
+          // списке — даже если их вернул старый бэкенд без фильтрации.
+          setUsers(data.filter((u) => u.is_active !== false))
+        }
       })
       .catch((err) => {
         if (alive) setError(extractApiError(err))

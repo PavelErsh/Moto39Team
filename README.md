@@ -459,6 +459,96 @@ make front-build     # production-сборка в frontend/dist
 make front-lint      # eslint
 ```
 
-## 📝 Лицензия
+## 📱 Мобильное приложение (Capacitor) с фоновым GPS
+
+Веб-версия шлёт координаты только пока страница «Карта» открыта в
+браузере. Чтобы райдер продолжал светиться на карте даже с закрытым/
+свёрнутым приложением, фронт можно собрать в нативную обёртку Capacitor
+(Android + iOS) — она стартует фоновый geolocation-сервис сразу после
+логина.
+
+Как это работает под капотом:
+
+- Плагин `@capacitor-community/background-geolocation` регистрирует
+  watcher, который слушает GPS.
+- На **Android** запускается foreground-service с постоянным
+  уведомлением («MOTO39 · Трекинг активен»). Пока уведомление висит,
+  ОС не убивает процесс и продолжает присылать координаты, даже когда
+  приложение свёрнуто.
+- На **iOS** используются significant-location-changes: система будит
+  приложение при заметном перемещении и отдаёт координаты (в т.ч.
+  после перезагрузки телефона).
+- Каждая координата отправляется на существующий эндпоинт
+  `POST /users/me/location`, а остальные райдеры видят её на «Карте»
+  через `GET /users/locations`.
+- Старт трекера привязан к `AuthContext`: он стартует, как только
+  появляется авторизованный пользователь, и останавливается при
+  логауте. На вебе `startBackgroundLocation()` — это no-op.
+
+### Первичная настройка (один раз)
+
+```bash
+cd frontend
+cp .env.example .env
+# Обязательно укажите публичный URL API — capacitor:// не понимает /api/v1:
+#   VITE_API_URL=https://moto39team.ru/api/v1
+npm install
+npm run build
+
+# Добавляем нативные проекты (создадут папки frontend/android и frontend/ios)
+npx cap add android
+npx cap add ios      # только на macOS
+npx cap sync
+```
+
+### Android: разрешения для фонового GPS
+
+В `frontend/android/app/src/main/AndroidManifest.xml` внутри `<manifest>`
+добавьте:
+
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+```
+
+### iOS: разрешения для фонового GPS
+
+В `frontend/ios/App/App/Info.plist` добавьте описания и включите
+Background Mode `location`:
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>MOTO39 показывает вашу позицию другим райдерам на карте.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>MOTO39 обновляет вашу позицию для друзей, даже когда приложение свёрнуто.</string>
+<key>UIBackgroundModes</key>
+<array>
+    <string>location</string>
+</array>
+```
+
+### Запуск на устройстве
+
+```bash
+# После любых правок кода:
+npm run build && npx cap sync
+
+# Android (Android Studio + подключённый девайс/эмулятор):
+npx cap open android    # или npm run cap:run:android
+
+# iOS (Xcode на macOS):
+npx cap open ios        # или npm run cap:run:ios
+```
+
+При первом запуске приложение спросит доступ к геолокации «Always». Если
+пользователь его выдал, координаты уходят на сервер каждые ~30 секунд
+(или сразу, если райдер сдвинулся более чем на ~20 м), даже когда
+приложение свёрнуто или экран заблокирован.
+
+## � Лицензия
 
 MIT

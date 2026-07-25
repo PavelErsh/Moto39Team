@@ -109,7 +109,8 @@ async def list_users(
     _: CurrentActiveUser,
     db: DbSession,
 ) -> list[UserPublic]:
-    users = await user_crud.list_all(db)
+    # Заблокированные пользователи не попадают в общий публичный список.
+    users = await user_crud.list_all(db, active_only=True)
     return [UserPublic.model_validate(u) for u in users]
 
 

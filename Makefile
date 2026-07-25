@@ -1,7 +1,7 @@
 .PHONY: install run dev lint format test migrate makemigrations stamp \
         create-admin make-admin list-users \
         docker-up docker-down front-install front-dev front-build front-lint \
-        deploy deploy-setup
+        deploy deploy-setup update
 
 
 # ---------- Backend ----------
@@ -84,5 +84,14 @@ deploy-setup:
 
 # Обновление уже задеплоенного проекта: git pull + пересборка backend/frontend.
 # Одна команда — и последняя версия на сервере.
+#
+# ВАЖНО: `make deploy` запускается на ЛОКАЛЬНОЙ машине и ходит на сервер по SSH.
+# Если вы уже на сервере (в /var/www/Moto39Team) — используйте `make update`,
+# он просто пересобирает проект локально (git pull + docker compose + nginx).
 deploy:
 	./deploy/deploy.sh
+
+# Обновление проекта НА САМОМ СЕРВЕРЕ (без SSH). Запускается из каталога
+# проекта на сервере, например /var/www/Moto39Team.
+update:
+	bash deploy/update.sh

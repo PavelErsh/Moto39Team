@@ -17,11 +17,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${SCRIPT_DIR}/deploy.env"
 
+# --- Fallback: запуск прямо на сервере -----------------------------------
+# Если deploy.env отсутствует, но мы уже находимся в каталоге проекта
+# на сервере (есть .git и deploy/update.sh) — просто обновим проект
+# локально, без SSH. Это удобно, если кто-то по привычке зашёл на сервер
+# и набрал `make deploy` вместо `make update`.
 if [[ ! -f "${ENV_FILE}" ]]; then
+    if [[ -d "${PROJECT_DIR}/.git" && -f "${SCRIPT_DIR}/update.sh" ]]; then
+        echo "ℹ deploy.env не найден, но проект уже развёрнут здесь."
+        echo "  Запускаю локальное обновление (deploy/update.sh)…"
+        exec bash "${SCRIPT_DIR}/update.sh"
+    fi
+
     echo "❌ Не найден ${ENV_FILE}"
-    echo "   Создайте его:"
+    echo "   'make deploy' запускается с ЛОКАЛЬНОЙ машины и ходит на сервер по SSH."
+    echo "   Если вы уже на сервере — используйте: make update"
+    echo ""
+    echo "   Иначе создайте конфиг для удалённого деплоя:"
     echo "       cp deploy/env.example deploy/deploy.env"
     echo "       nano deploy/deploy.env"
     exit 1

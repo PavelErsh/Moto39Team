@@ -47,6 +47,7 @@ class UserPublic(BaseModel):
     username: str
     full_name: str | None = None
     avatar_url: str | None = None
+    is_active: bool = True
     created_at: datetime
     motorcycles: list[MotorcycleRead] = []
 
