@@ -5,7 +5,9 @@
 # скриптом deploy/setup-server.sh при установке. Итоговый файл кладётся в
 # /etc/nginx/sites-available/moto39team и симлинкается в sites-enabled.
 #
-# HTTPS/редирект на 443 добавит certbot --nginx (см. setup-server.sh).
+# HTTPS/редирект на 443 добавит certbot --nginx (см. setup-server.sh и
+# deploy/update.sh — там при каждом обновлении вызывается certbot --nginx,
+# чтобы ре-установить SSL после регенерации конфига из шаблона).
 # =========================================================================
 
 server {
@@ -17,17 +19,16 @@ server {
     # отдаёт .js как text/plain → браузер отклоняет module-script).
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-    # Дополнительно фиксируем важнейшие типы (на случай урезанной
-    # версии /etc/nginx/mime.types).
+
+    # Добавляем только те типы, которых может не быть в стандартном
+    # /etc/nginx/mime.types (на Ubuntu их обычно нет).
+    # Все остальные (js/css/svg/json/woff/woff2/…) уже определены выше —
+    # передекларировать их нельзя, иначе nginx пишет:
+    #   "duplicate extension <ext>, content type: …".
     types {
-        application/javascript js mjs;
-        application/wasm       wasm;
-        text/css               css;
-        image/svg+xml          svg svgz;
-        application/json       json map;
-        font/woff              woff;
-        font/woff2             woff2;
+        application/wasm          wasm;
         application/manifest+json webmanifest;
+        application/javascript    mjs;
     }
 
     # webroot для валидации Let's Encrypt (используется certbot).
