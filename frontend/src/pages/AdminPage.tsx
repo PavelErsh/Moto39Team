@@ -92,6 +92,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [usersView, setUsersView] = useState<'active' | 'blocked'>('active')
 
   // references
   const [refs, setRefs] = useState<ReferenceItem[]>([])
@@ -1112,16 +1113,49 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === 'users' && (
+      {tab === 'users' && (() => {
+        const activeUsers = users.filter((u) => u.is_active)
+        const blockedUsers = users.filter((u) => !u.is_active)
+        const shownUsers =
+          usersView === 'active' ? activeUsers : blockedUsers
+        return (
         <div className="admin-section">
           <div className="admin-section__head">
             <h2 className="admin-section__title">Пользователи</h2>
+          </div>
+
+          <div className="admin-tabs">
+            <button
+              type="button"
+              className={`admin-tab ${usersView === 'active' ? 'is-active' : ''}`}
+              onClick={() => setUsersView('active')}
+            >
+              ✅ Активные ({activeUsers.length})
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${usersView === 'blocked' ? 'is-active' : ''}`}
+              onClick={() => setUsersView('blocked')}
+            >
+              🚫 Заблокированные ({blockedUsers.length})
+            </button>
           </div>
 
           {usersError && <div className="alert alert-error">{usersError}</div>}
 
           {usersLoading ? (
             <div className="muted">Загрузка…</div>
+          ) : shownUsers.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state__icon">
+                {usersView === 'active' ? '👥' : '🚫'}
+              </div>
+              <p className="muted">
+                {usersView === 'active'
+                  ? 'Активных пользователей пока нет.'
+                  : 'Заблокированных пользователей нет.'}
+              </p>
+            </div>
           ) : (
             <div className="events-table-wrap">
               <table className="events-table">
@@ -1136,7 +1170,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
+                  {shownUsers.map((u) => (
                     <tr key={u.id} className={u.is_active ? '' : 'is-past'}>
                       <td>
                         <strong>@{u.username}</strong>
@@ -1197,7 +1231,8 @@ export default function AdminPage() {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
     </section>
   )
 }
