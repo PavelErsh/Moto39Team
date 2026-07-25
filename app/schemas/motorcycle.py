@@ -11,6 +11,7 @@ class MotorcycleBase(BaseModel):
     engine_cc: int | None = Field(default=None, ge=1, le=10000)
     color: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=2000)
+    photo_url: str | None = Field(default=None, max_length=500)
 
 
 class MotorcycleCreate(MotorcycleBase):
@@ -24,6 +25,7 @@ class MotorcycleUpdate(BaseModel):
     engine_cc: int | None = Field(default=None, ge=1, le=10000)
     color: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=2000)
+    photo_url: str | None = Field(default=None, max_length=500)
 
 
 class MotorcycleRead(MotorcycleBase):

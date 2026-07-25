@@ -5,6 +5,7 @@ export interface User {
   email: string
   username: string
   full_name: string | null
+  avatar_url: string | null
   is_active: boolean
   is_superuser: boolean
   created_at: string
@@ -23,6 +24,7 @@ export interface UpdateUserPayload {
   username?: string
   full_name?: string | null
   password?: string
+  avatar_url?: string | null
 }
 
 export async function apiRegister(data: RegisterPayload): Promise<User> {
@@ -58,6 +60,21 @@ export async function apiUpdateMe(payload: UpdateUserPayload): Promise<User> {
   return res.data
 }
 
+export async function apiUploadAvatar(file: File): Promise<User> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<User>('/users/me/avatar', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function apiDeleteAvatar(): Promise<User> {
+  const res = await api.delete<User>('/users/me/avatar')
+  return res.data
+}
+
 export function apiLogout(): void {
   tokenStorage.clear()
 }
+

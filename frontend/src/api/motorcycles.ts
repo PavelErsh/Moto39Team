@@ -9,6 +9,7 @@ export interface Motorcycle {
   engine_cc: number | null
   color: string | null
   description: string | null
+  photo_url: string | null
   created_at: string
   updated_at: string
 }
@@ -20,6 +21,7 @@ export interface MotorcyclePayload {
   engine_cc?: number | null
   color?: string | null
   description?: string | null
+  photo_url?: string | null
 }
 
 export async function apiListMyMotorcycles(): Promise<Motorcycle[]> {
@@ -46,10 +48,34 @@ export async function apiDeleteMotorcycle(id: number): Promise<void> {
   await api.delete(`/motorcycles/${id}`)
 }
 
+export async function apiUploadMotorcyclePhoto(
+  id: number,
+  file: File,
+): Promise<Motorcycle> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<Motorcycle>(`/motorcycles/${id}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function apiUploadMotorcycleImage(
+  file: File,
+): Promise<{ url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<{ url: string }>('/motorcycles/upload-photo', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
 export interface PublicUser {
   id: number
   username: string
   full_name: string | null
+  avatar_url: string | null
   created_at: string
   motorcycles: Motorcycle[]
 }
@@ -70,6 +96,7 @@ export interface UserLocation {
   id: number
   username: string
   full_name: string | null
+  avatar_url: string | null
   lat: number
   lng: number
   accuracy: number | null

@@ -38,7 +38,13 @@ export default function UserProfilePage() {
   return (
     <section className="cabinet">
       <header className="cabinet__head">
-        <div className="avatar">{initial}</div>
+        {profile.avatar_url ? (
+          <div className="avatar avatar--image">
+            <img src={profile.avatar_url} alt={profile.username} />
+          </div>
+        ) : (
+          <div className="avatar">{initial}</div>
+        )}
         <div>
           <h1 className="cabinet__name">
             {profile.full_name || profile.username}
@@ -63,6 +69,15 @@ export default function UserProfilePage() {
         <div className="moto-list">
           {profile.motorcycles.map((m) => (
             <article key={m.id} className="moto-card">
+              {m.photo_url ? (
+                <div className="moto-card__photo">
+                  <img src={m.photo_url} alt={`${m.brand} ${m.model}`} />
+                </div>
+              ) : (
+                <div className="moto-card__photo moto-card__photo--empty">
+                  🏍️
+                </div>
+              )}
               <div className="moto-card__body">
                 <h3 className="moto-card__title">
                   {m.brand} {m.model}

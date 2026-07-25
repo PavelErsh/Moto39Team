@@ -21,6 +21,7 @@ class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=3, max_length=64)
     full_name: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    avatar_url: str | None = Field(default=None, max_length=500)
 
 
 class UserLogin(BaseModel):
@@ -32,6 +33,7 @@ class UserRead(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
+    avatar_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -44,6 +46,7 @@ class UserPublic(BaseModel):
     id: int
     username: str
     full_name: str | None = None
+    avatar_url: str | None = None
     created_at: datetime
     motorcycles: list[MotorcycleRead] = []
 
@@ -64,6 +67,7 @@ class UserLocation(BaseModel):
     id: int
     username: str
     full_name: str | None = None
+    avatar_url: str | None = None
     lat: float
     lng: float
     accuracy: float | None = None

@@ -1,13 +1,15 @@
 """Роуты работы с гаражом (мотоциклами пользователя)."""
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentActiveUser, DbSession
+from app.api.v1._uploads import save_uploaded_image
 from app.crud.motorcycle import motorcycle_crud
 from app.schemas.motorcycle import (
     MotorcycleCreate,
     MotorcycleRead,
     MotorcycleUpdate,
 )
+from app.schemas.reference import ImageUploadResponse
 
 router = APIRouter()
 
@@ -88,3 +90,52 @@ async def delete_motorcycle(
             detail="Это не ваш мотоцикл",
         )
     await motorcycle_crud.delete(db, moto)
+
+
+@router.post(
+    "/upload-photo",
+    response_model=ImageUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Загрузить изображение мотоцикла",
+)
+async def upload_motorcycle_photo(
+    _: CurrentActiveUser,
+    file: UploadFile = File(...),
+) -> ImageUploadResponse:
+    """Возвращает URL сохранённого файла.
+
+    Привязку к конкретному мотоциклу делает PATCH ``/motorcycles/{id}``
+    с полем ``photo_url``.
+    """
+    url = await save_uploaded_image(file, "motorcycles")
+    return ImageUploadResponse(url=url)
+
+
+@router.post(
+    "/{moto_id}/photo",
+    response_model=MotorcycleRead,
+    summary="Загрузить/обновить фото мотоцикла",
+)
+async def upload_and_set_photo(
+    moto_id: int,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> MotorcycleRead:
+    """Загружает файл и сразу привязывает URL к мотоциклу."""
+    moto = await motorcycle_crud.get(db, moto_id)
+    if moto is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Мотоцикл не найден",
+        )
+    if moto.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Это не ваш мотоцикл",
+        )
+    url = await save_uploaded_image(file, "motorcycles")
+    moto = await motorcycle_crud.update(
+        db, moto, MotorcycleUpdate(photo_url=url)
+    )
+    return MotorcycleRead.model_validate(moto)

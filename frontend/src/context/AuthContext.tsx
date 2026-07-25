@@ -8,11 +8,13 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  apiDeleteAvatar,
   apiLogin,
   apiLogout,
   apiMe,
   apiRegister,
   apiUpdateMe,
+  apiUploadAvatar,
   type RegisterPayload,
   type UpdateUserPayload,
   type User,
@@ -26,6 +28,8 @@ interface AuthContextValue {
   register: (data: RegisterPayload) => Promise<void>
   logout: () => void
   updateProfile: (data: UpdateUserPayload) => Promise<User>
+  uploadAvatar: (file: File) => Promise<User>
+  deleteAvatar: () => Promise<User>
   refreshUser: () => Promise<void>
 }
 
@@ -80,9 +84,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me
   }, [])
 
+  const uploadAvatar = useCallback(async (file: File) => {
+    const me = await apiUploadAvatar(file)
+    setUser(me)
+    return me
+  }, [])
+
+  const deleteAvatar = useCallback(async () => {
+    const me = await apiDeleteAvatar()
+    setUser(me)
+    return me
+  }, [])
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, register, logout, updateProfile, refreshUser }),
-    [user, loading, login, register, logout, updateProfile, refreshUser],
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      updateProfile,
+      uploadAvatar,
+      deleteAvatar,
+      refreshUser,
+    }),
+    [
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      updateProfile,
+      uploadAvatar,
+      deleteAvatar,
+      refreshUser,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

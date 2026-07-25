@@ -28,7 +28,13 @@ export default function Layout({ children }: { children: ReactNode }) {
                   </NavLink>
                 )}
                 <Link to="/cabinet" className="nav-user" title="Профиль">
-                  <span className="nav-user__avatar">{initial}</span>
+                  {user.avatar_url ? (
+                    <span className="nav-user__avatar nav-user__avatar--image">
+                      <img src={user.avatar_url} alt={user.username} />
+                    </span>
+                  ) : (
+                    <span className="nav-user__avatar">{initial}</span>
+                  )}
                 </Link>
                 <button
                   type="button"

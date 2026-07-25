@@ -1,8 +1,10 @@
 """Роуты работы с пользователями."""
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentActiveUser, CurrentSuperuser, DbSession
+from app.api.v1._uploads import save_uploaded_image
 from app.crud.user import user_crud
+from app.schemas.reference import ImageUploadResponse
 from app.schemas.user import (
     LocationUpdate,
     UserLocation,
@@ -19,6 +21,7 @@ def _to_location(user) -> UserLocation:
         id=user.id,
         username=user.username,
         full_name=user.full_name,
+        avatar_url=user.avatar_url,
         lat=user.last_lat,
         lng=user.last_lng,
         accuracy=user.last_accuracy,
@@ -47,6 +50,54 @@ async def update_me(
 ) -> UserRead:
     user = await user_crud.update(db, current_user, data)
     return UserRead.model_validate(user)
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserRead,
+    summary="Загрузить/обновить свою аватарку",
+)
+async def upload_my_avatar(
+    current_user: CurrentActiveUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> UserRead:
+    """Сохраняет файл в /media/avatars и обновляет ``avatar_url`` профиля."""
+    url = await save_uploaded_image(file, "avatars")
+    user = await user_crud.update(
+        db, current_user, UserUpdate(avatar_url=url)
+    )
+    return UserRead.model_validate(user)
+
+
+@router.delete(
+    "/me/avatar",
+    response_model=UserRead,
+    summary="Удалить аватарку",
+)
+async def delete_my_avatar(
+    current_user: CurrentActiveUser,
+    db: DbSession,
+) -> UserRead:
+    user = await user_crud.update(
+        db, current_user, UserUpdate(avatar_url=None)
+    )
+    return UserRead.model_validate(user)
+
+
+@router.post(
+    "/upload-avatar",
+    response_model=ImageUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Загрузить изображение аватара (без привязки к профилю)",
+)
+async def upload_avatar_image(
+    _: CurrentActiveUser,
+    file: UploadFile = File(...),
+) -> ImageUploadResponse:
+    """URL сохранённого файла (привязку выполнит PATCH /users/me)."""
+    url = await save_uploaded_image(file, "avatars")
+    return ImageUploadResponse(url=url)
 
 
 @router.get(

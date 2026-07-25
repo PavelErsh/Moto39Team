@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 
 export default function CabinetPage() {
-  const { user, updateProfile } = useAuth()
+  const { user, updateProfile, uploadAvatar, deleteAvatar } = useAuth()
 
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -13,6 +13,9 @@ export default function CabinetPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (user) {
@@ -59,12 +62,85 @@ export default function CabinetPage() {
     }
   }
 
+  async function onAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Сбрасываем значение, чтобы можно было выбрать тот же файл повторно
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    setSuccess(null)
+    setAvatarBusy(true)
+    try {
+      await uploadAvatar(file)
+      setSuccess('Фото профиля обновлено')
+    } catch (err) {
+      setError(extractApiError(err))
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  async function onDeleteAvatar() {
+    if (!user!.avatar_url) return
+    if (!window.confirm('Удалить фото профиля?')) return
+    setError(null)
+    setSuccess(null)
+    setAvatarBusy(true)
+    try {
+      await deleteAvatar()
+      setSuccess('Фото профиля удалено')
+    } catch (err) {
+      setError(extractApiError(err))
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
   const initial = (user.username[0] || '?').toUpperCase()
 
   return (
     <section className="cabinet">
       <header className="cabinet__head">
-        <div className="avatar">{initial}</div>
+        <div className="avatar-wrap">
+          {user.avatar_url ? (
+            <div className="avatar avatar--image">
+              <img src={user.avatar_url} alt={user.username} />
+            </div>
+          ) : (
+            <div className="avatar">{initial}</div>
+          )}
+          <div className="avatar-actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={avatarBusy}
+            >
+              {avatarBusy
+                ? 'Загрузка…'
+                : user.avatar_url
+                  ? 'Сменить фото'
+                  : '📷 Загрузить фото'}
+            </button>
+            {user.avatar_url && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-danger"
+                onClick={onDeleteAvatar}
+                disabled={avatarBusy}
+              >
+                Удалить
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={onAvatarChange}
+              style={{ display: 'none' }}
+            />
+          </div>
+        </div>
         <div>
           <h1 className="cabinet__name">{user.full_name || user.username}</h1>
           <p className="muted">@{user.username}</p>

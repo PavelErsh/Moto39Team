@@ -49,7 +49,13 @@ export default function RidersPage() {
                 to={`/u/${encodeURIComponent(u.username)}`}
                 className="rider-card"
               >
-                <div className="avatar rider-card__avatar">{initial}</div>
+                {u.avatar_url ? (
+                  <div className="avatar rider-card__avatar avatar--image">
+                    <img src={u.avatar_url} alt={u.username} />
+                  </div>
+                ) : (
+                  <div className="avatar rider-card__avatar">{initial}</div>
+                )}
                 <div className="rider-card__body">
                   <div className="rider-card__name">
                     {u.full_name || u.username}
