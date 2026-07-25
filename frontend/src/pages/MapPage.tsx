@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   apiListUserLocations,
-  apiUpdateMyLocation,
   type UserLocation,
 } from '../api/motorcycles'
+import {
+  getLastFix,
+  startBackgroundLocation,
+  subscribeLocation,
+  type LocationFix,
+} from '../services/backgroundLocation'
 
 // Калининград — центр по умолчанию
 const DEFAULT_CENTER: [number, number] = [54.7104, 20.4522]
 const DEFAULT_ZOOM = 11
 const MY_ZOOM = 15
 
-// Как часто отправляем свои координаты на бэкенд, мс.
-const LOCATION_PUSH_INTERVAL_MS = 30_000
 // Как часто подтягиваем чужие координаты с бэкенда, мс.
 const LOCATION_POLL_INTERVAL_MS = 30_000
 // Свежесть чужих координат (минуты) — только те, кто был на связи недавно.
@@ -181,22 +184,22 @@ export default function MapPage() {
   const mapRef = useRef<any>(null)
   const meMarkerRef = useRef<any>(null)
   const accuracyCircleRef = useRef<any>(null)
-  const watchIdRef = useRef<number | null>(null)
-  const coordsRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(
-    null,
-  )
+  const firstFixAppliedRef = useRef(false)
 
   // Отдельная коллекция маркеров других райдеров: userId -> marker
   const riderMarkersRef = useRef<Map<number, any>>(new Map())
-  const lastPushRef = useRef<number>(0)
-  const lastPushedRef = useRef<{ lat: number; lng: number } | null>(null)
 
   const [status, setStatus] = useState<string>('Загружаем карту…')
   const [coords, setCoords] = useState<{
     lat: number
     lng: number
-    accuracy: number
-  } | null>(null)
+    accuracy: number | null
+  } | null>(() => {
+    // Если фоновый сервис уже что-то поймал раньше — сразу используем.
+    const cached = getLastFix()
+    if (!cached) return null
+    return { lat: cached.lat, lng: cached.lng, accuracy: cached.accuracy }
+  })
 
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -296,72 +299,31 @@ export default function MapPage() {
     }
   }, [])
 
-  // Отправка своих координат на бэкенд (троттлинг)
-  const pushMyLocation = (lat: number, lng: number, accuracy: number) => {
-    const now = Date.now()
-    const last = lastPushedRef.current
-    // Не спамим одинаковые координаты. Отправляем, если:
-    // - ещё не отправляли,
-    // - прошло больше LOCATION_PUSH_INTERVAL_MS,
-    // - или сместились более чем на ~10 м (грубо через дельту в градусах).
-    const movedEnough =
-      !last ||
-      Math.abs(last.lat - lat) > 0.0001 ||
-      Math.abs(last.lng - lng) > 0.0001
-    if (
-      now - lastPushRef.current >= LOCATION_PUSH_INTERVAL_MS ||
-      (movedEnough && now - lastPushRef.current > 5_000)
-    ) {
-      lastPushRef.current = now
-      lastPushedRef.current = { lat, lng }
-      apiUpdateMyLocation({ lat, lng, accuracy }).catch(() => {
-        // Тихо игнорируем: не критично для UX карты
-      })
-    }
-  }
-
-  // Геолокация — как только карта готова
+  // Подписка на глобальный трекер геолокации (общий сервис).
+  //
+  // Мы НЕ запускаем свой `watchPosition` — сервис `backgroundLocation`
+  // уже отслеживает позицию с момента логина (независимо от того, на
+  // какой странице находится пользователь). Здесь только рисуем на карте.
   useEffect(() => {
     if (!ready) return
-    if (!('geolocation' in navigator)) {
-      setError('Геолокация не поддерживается вашим браузером.')
-      setStatus('')
-      return
-    }
-
     const map = mapRef.current
     if (!map) return
 
-    let firstFix = true
-    // Максимально допустимая погрешность (метры). Всё, что хуже — считаем это
-    // грубым Wi-Fi/IP-фиксом и игнорируем, ждём настоящий GPS.
-    const GPS_ACCURACY_THRESHOLD = 200
+    // На всякий случай пытаемся стартануть — если сервис уже запущен,
+    // это no-op. Полезно, если карта открыта до срабатывания эффекта в
+    // AuthContext (например, при первом рендере).
+    void startBackgroundLocation()
 
-    const onSuccess: PositionCallback = (pos) => {
-      const { latitude, longitude, accuracy } = pos.coords
+    const applyFix = (fix: LocationFix) => {
+      const { lat, lng, accuracy } = fix
+      const point: [number, number] = [lat, lng]
 
-      // Отфильтровываем «мусорные» IP/Wi-Fi фиксы: если у нас ещё не было
-      // точной позиции, а этот фикс явно грубый — просто игнорируем его.
-      if (
-        accuracy > GPS_ACCURACY_THRESHOLD &&
-        (!coordsRef.current ||
-          accuracy > (coordsRef.current.accuracy ?? Infinity))
-      ) {
-        if (!coordsRef.current) {
-          setStatus(
-            `Ждём GPS… (пока ±${Math.round(accuracy)} м — это IP/Wi-Fi)`,
-          )
-        }
-        return
-      }
-
-      const next = { lat: latitude, lng: longitude, accuracy }
-      coordsRef.current = next
-      setCoords(next)
+      setCoords({ lat, lng, accuracy })
       setError(null)
       setStatus('')
 
-      const point: [number, number] = [latitude, longitude]
+      // Радиус погрешности рисуем, только если ОС его сообщила.
+      const radius = typeof accuracy === 'number' && accuracy > 0 ? accuracy : 0
 
       if (USE_YANDEX) {
         const ymaps = window.ymaps
@@ -381,26 +343,28 @@ export default function MapPage() {
           meMarkerRef.current.geometry.setCoordinates(point)
         }
 
-        if (!accuracyCircleRef.current) {
-          accuracyCircleRef.current = new ymaps.Circle(
-            [point, accuracy],
-            {},
-            {
-              fillColor: '#ff2a2a22',
-              strokeColor: '#ff2a2a',
-              strokeOpacity: 0.7,
-              strokeWidth: 1,
-            },
-          )
-          map.geoObjects.add(accuracyCircleRef.current)
-        } else {
-          accuracyCircleRef.current.geometry.setCoordinates(point)
-          accuracyCircleRef.current.geometry.setRadius(accuracy)
+        if (radius > 0) {
+          if (!accuracyCircleRef.current) {
+            accuracyCircleRef.current = new ymaps.Circle(
+              [point, radius],
+              {},
+              {
+                fillColor: '#ff2a2a22',
+                strokeColor: '#ff2a2a',
+                strokeOpacity: 0.7,
+                strokeWidth: 1,
+              },
+            )
+            map.geoObjects.add(accuracyCircleRef.current)
+          } else {
+            accuracyCircleRef.current.geometry.setCoordinates(point)
+            accuracyCircleRef.current.geometry.setRadius(radius)
+          }
         }
 
-        if (firstFix) {
+        if (!firstFixAppliedRef.current) {
           map.setCenter(point, MY_ZOOM, { duration: 400 })
-          firstFix = false
+          firstFixAppliedRef.current = true
         }
       } else {
         const L = window.L
@@ -420,73 +384,36 @@ export default function MapPage() {
           meMarkerRef.current.setLatLng(point)
         }
 
-        if (!accuracyCircleRef.current) {
-          accuracyCircleRef.current = L.circle(point, {
-            radius: accuracy,
-            color: '#ff2a2a',
-            weight: 1,
-            opacity: 0.7,
-            fillColor: '#ff2a2a',
-            fillOpacity: 0.13,
-          }).addTo(map)
-        } else {
-          accuracyCircleRef.current.setLatLng(point)
-          accuracyCircleRef.current.setRadius(accuracy)
+        if (radius > 0) {
+          if (!accuracyCircleRef.current) {
+            accuracyCircleRef.current = L.circle(point, {
+              radius,
+              color: '#ff2a2a',
+              weight: 1,
+              opacity: 0.7,
+              fillColor: '#ff2a2a',
+              fillOpacity: 0.13,
+            }).addTo(map)
+          } else {
+            accuracyCircleRef.current.setLatLng(point)
+            accuracyCircleRef.current.setRadius(radius)
+          }
         }
 
-        if (firstFix) {
+        if (!firstFixAppliedRef.current) {
           map.setView(point, Math.max(map.getZoom(), MY_ZOOM), {
             animate: true,
           })
-          firstFix = false
+          firstFixAppliedRef.current = true
         }
-      }
-
-      // Отправляем свои координаты на бэкенд (для других райдеров).
-      pushMyLocation(latitude, longitude, accuracy)
-    }
-
-    // Быстрый первый фикс (Wi-Fi/IP) — без пробуждения GPS,
-    // чтобы моментально показать пользователя на карте.
-    // Дальше — watchPosition с enableHighAccuracy для точного GPS-трекинга.
-    const onError: PositionErrorCallback = (err) => {
-      if (err.code === err.PERMISSION_DENIED) {
-        setError(
-          'Доступ к геолокации запрещён. Разрешите в настройках браузера.',
-        )
-        setStatus('')
-        return
-      }
-      // POSITION_UNAVAILABLE / TIMEOUT — транзиентно, GPS ещё не поймал сигнал.
-      // Не сбрасываем уже полученные Wi-Fi-координаты, просто ждём следующий тик.
-      if (!coordsRef.current) {
-        setStatus('Определяем местоположение…')
       }
     }
 
     setStatus('Ждём GPS…')
-
-    // Только высокоточный GPS-трекинг. Никаких быстрых Wi-Fi/IP fallback'ов —
-    // они давали грубую позицию (иногда километры вбок), которая перебивала
-    // настоящий GPS-фикс.
-    // Примечание: на десктопах без GPS macOS/CoreLocation периодически пишет
-    // в консоль «kCLErrorLocationUnknown». Это системный лог браузера, не JS-
-    // ошибка. Мы фильтруем его в фильтре console (см. main.tsx / setupConsole).
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      onSuccess,
-      onError,
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 30000,
-      },
-    )
+    const unsubscribe = subscribeLocation(applyFix)
 
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
-        watchIdRef.current = null
-      }
+      unsubscribe()
     }
   }, [ready])
 
@@ -618,7 +545,11 @@ export default function MapPage() {
               : coords
               ? `Ваши координаты: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
                   5,
-                )}  ·  точность ±${Math.round(coords.accuracy)} м  ·  на карте ${riders.length} райдер(ов)`
+                )}${
+                  typeof coords.accuracy === 'number' && coords.accuracy > 0
+                    ? `  ·  точность ±${Math.round(coords.accuracy)} м`
+                    : ''
+                }  ·  на карте ${riders.length} райдер(ов)`
               : status}
           </p>
         </div>
