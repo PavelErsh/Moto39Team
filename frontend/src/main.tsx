@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import App from './App'
+import { applyLowEndClass } from './utils/performance'
 import './index.css'
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,13 @@ import './index.css'
   console.error = wrap(console.error.bind(console))
   console.debug = wrap(console.debug.bind(console))
 }
+
+// ---------------------------------------------------------------------------
+// Детектим слабое устройство ДО первого рендера — так CSS-правила с классом
+// .low-end сразу применятся к первой отрисовке (без "мигания" тяжёлых
+// эффектов на первом кадре). См. src/utils/performance.ts и src/index.css.
+// ---------------------------------------------------------------------------
+applyLowEndClass()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

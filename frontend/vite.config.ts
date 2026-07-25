@@ -33,4 +33,25 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Целимся в широкий список браузеров, включая старые Android/iOS.
+    // esbuild сам знает эти таргеты и подберёт совместимый output.
+    target: ['es2019', 'chrome80', 'safari13', 'firefox78'],
+    // Разбиваем вендорные библиотеки на отдельные чанки, чтобы:
+    // 1) страницы, где они не нужны, вообще их не грузили;
+    // 2) браузер мог кешировать вендорные чанки между релизами.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          twemoji: ['@twemoji/api'],
+          axios: ['axios'],
+        },
+      },
+    },
+    // Для слабых устройств важнее размер, чем скорость сборки.
+    cssCodeSplit: true,
+    sourcemap: false,
+    reportCompressedSize: false,
+  },
 })

@@ -1,22 +1,40 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
-import CabinetPage from './pages/CabinetPage'
 import StubPage from './pages/StubPage'
-import MapPage from './pages/MapPage'
-import GaragePage from './pages/GaragePage'
-import UserProfilePage from './pages/UserProfilePage'
-import RidersPage from './pages/RidersPage'
-import CalendarPage from './pages/CalendarPage'
-import EventDetailPage from './pages/EventDetailPage'
-import AdminPage from './pages/AdminPage'
-import ReferencesPage from './pages/ReferencesPage'
-import ReferenceDetailPage from './pages/ReferenceDetailPage'
 import { useAuth } from './context/AuthContext'
 import { useTwemoji } from './hooks/useTwemoji'
+
+/**
+ * Code-splitting крупных / редко используемых страниц.
+ *
+ * Даёт большой выигрыш на слабых устройствах: главный бандл становится
+ * ощутимо меньше, парсинг/старт JS на первом экране быстрее, а карта
+ * с её тяжёлыми зависимостями (Leaflet/Yandex, watchPosition) грузится
+ * только тогда, когда пользователь реально идёт в /map.
+ */
+const CabinetPage = lazy(() => import('./pages/CabinetPage'))
+const MapPage = lazy(() => import('./pages/MapPage'))
+const GaragePage = lazy(() => import('./pages/GaragePage'))
+const UserProfilePage = lazy(() => import('./pages/UserProfilePage'))
+const RidersPage = lazy(() => import('./pages/RidersPage'))
+const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const ReferencesPage = lazy(() => import('./pages/ReferencesPage'))
+const ReferenceDetailPage = lazy(() => import('./pages/ReferenceDetailPage'))
+
+function PageFallback() {
+  return (
+    <div className="loading-screen">
+      <div className="spinner" />
+    </div>
+  )
+}
 
 export default function App() {
   const { loading } = useAuth()
@@ -32,83 +50,85 @@ export default function App() {
 
   return (
     <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route
-          path="/cabinet"
-          element={
-            <ProtectedRoute>
-              <CabinetPage />
-            </ProtectedRoute>
-          }
-        />
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/cabinet"
+            element={
+              <ProtectedRoute>
+                <CabinetPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Закрытые разделы — только для авторизованных */}
-        <Route
-          path="/moto"
-          element={
-            <ProtectedRoute>
-              <GaragePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/riders"
-          element={
-            <ProtectedRoute>
-              <RidersPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/u/:username"
-          element={
-            <ProtectedRoute>
-              <UserProfilePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chat"
-          element={
-            <ProtectedRoute>
-              <StubPage icon="💬" title="Чат" />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/calendar/:id" element={<EventDetailPage />} />
-        <Route path="/reference" element={<ReferencesPage />} />
-        <Route path="/reference/:slug" element={<ReferenceDetailPage />} />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/rides"
-          element={
-            <ProtectedRoute>
-              <StubPage icon="🏁" title="Заезды" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/map"
-          element={
-            <ProtectedRoute>
-              <MapPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Закрытые разделы — только для авторизованных */}
+          <Route
+            path="/moto"
+            element={
+              <ProtectedRoute>
+                <GaragePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/riders"
+            element={
+              <ProtectedRoute>
+                <RidersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/u/:username"
+            element={
+              <ProtectedRoute>
+                <UserProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute>
+                <StubPage icon="💬" title="Чат" />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/calendar/:id" element={<EventDetailPage />} />
+          <Route path="/reference" element={<ReferencesPage />} />
+          <Route path="/reference/:slug" element={<ReferenceDetailPage />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/rides"
+            element={
+              <ProtectedRoute>
+                <StubPage icon="🏁" title="Заезды" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/map"
+            element={
+              <ProtectedRoute>
+                <MapPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </Layout>
   )
 }

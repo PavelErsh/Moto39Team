@@ -4,7 +4,24 @@
    тёплый асфальт, зерно, тонкая хазард-полоса, моно-акценты.
    ========================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+/*
+   Шрифты подключаются в index.html через <link rel="preconnect"> и
+   <link rel="stylesheet"> с display=swap. Синхронный @import из CSS
+   блокировал рендер на слабых устройствах — оставляем только фолбэки.
+*/
+
+/* -------- Флаг "слабое устройство" --------
+   На старых/слабых устройствах отключаем дорогие эффекты:
+   - CRT-сканлайны, виньетку, background-attachment: fixed;
+   - backdrop-filter (blur);
+   - большие box-shadow / text-shadow / drop-shadow.
+   Флаг ставится из main.tsx (класс .low-end на <html>) на основе:
+   * navigator.hardwareConcurrency <= 4
+   * navigator.deviceMemory <= 4
+   * prefers-reduced-motion / prefers-reduced-transparency
+   * (по желанию) параметр ?lite=1 в URL или localStorage.lowEnd = "1"
+*/
+
 
 :root {
   /* Чёрный фон */
@@ -2235,3 +2252,125 @@ img.emoji {
 .event-detail__meta dt {
   color: var(--muted);
 }
+
+/* =========================================================
+   LOW-END / REDUCED-EFFECTS РЕЖИМ
+   Класс .low-end ставится на <html> из main.tsx, если устройство
+   определено как слабое (мало ядер/памяти) или пользователь
+   попросил меньше анимаций/прозрачности.
+   Также активируется на очень узких экранах <=380px, где обычно
+   встречаются самые старые телефоны.
+
+   Что отключаем:
+     - Полноэкранные оверлеи body::before / body::after (сканлайны, виньетка).
+     - background-attachment: fixed и SVG-шум (заменяем на плоский цвет).
+     - backdrop-filter (blur) в шапке — заменяем на плотный фон.
+     - Крупные box-shadow / text-shadow / filter: drop-shadow.
+     - Дорогие hover-эффекты (transform / доп. тени) на тач-устройствах.
+   ========================================================= */
+
+html.low-end body {
+  /* плоский фон без шума и без fixed-attachment */
+  background-image: none;
+  background-attachment: scroll;
+}
+
+html.low-end body::before,
+html.low-end body::after {
+  display: none !important;
+}
+
+html.low-end .site-header {
+  /* Заменяем backdrop-filter на плотный непрозрачный фон.
+     Blur на sticky-элементе, растянутом на всю ширину, — одна из
+     самых дорогих операций для GPU на старых устройствах. */
+  background: #050705;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.low-end .site-header::after,
+html.low-end .site-footer::before {
+  /* Хазард-полосы делаем плоскими, без repeating-gradient каждый кадр. */
+  background: var(--accent-dim);
+  opacity: 0.35;
+}
+
+/* Убираем "свечения" и большие тени */
+html.low-end .logo,
+html.low-end .hero__title,
+html.low-end .hero__moto,
+html.low-end .tile__title {
+  text-shadow: none;
+  filter: none;
+}
+
+html.low-end .btn-primary,
+html.low-end .chat-btn,
+html.low-end .avatar,
+html.low-end .nav-user__avatar {
+  box-shadow: none;
+}
+
+html.low-end .btn-primary:hover:not(:disabled),
+html.low-end .chat-btn:hover {
+  box-shadow: none;
+}
+
+html.low-end .tile,
+html.low-end .moto-card,
+html.low-end .rider-card,
+html.low-end .event-card,
+html.low-end .reference-card,
+html.low-end .auth-card,
+html.low-end .edit-card,
+html.low-end .events-table-wrap,
+html.low-end .map-wrap {
+  box-shadow: none;
+  /* Градиенты панелей заменяем на плоский цвет —
+     это ощутимо снижает нагрузку при скролле длинных списков. */
+  background: var(--panel);
+}
+
+/* Убираем hover-трансформы на слабых устройствах и на тачскринах —
+   их всё равно "не видно" пальцем, а перерасчёт compositing-слоя
+   при каждом тапе даёт заметный лаг. */
+html.low-end .tile:hover,
+html.low-end .moto-card:hover,
+html.low-end .rider-card:hover,
+html.low-end .event-card:hover,
+html.low-end .reference-card:hover,
+html.low-end .events-table__thumb:hover,
+html.low-end .reference-gallery__item:hover,
+html.low-end .nav-user:hover {
+  transform: none;
+}
+
+/* На реальных тач-устройствах (без hover) — тоже отключаем hover-эффекты:
+   они провоцируют долгий "sticky hover" после тапа и лишние перерисовки. */
+@media (hover: none) {
+  .tile:hover,
+  .moto-card:hover,
+  .rider-card:hover,
+  .event-card:hover,
+  .reference-card:hover,
+  .events-table__thumb:hover,
+  .reference-gallery__item:hover,
+  .nav-user:hover,
+  .btn:hover,
+  .btn-primary:hover:not(:disabled),
+  .chat-btn:hover {
+    transform: none;
+  }
+}
+
+/* Оптимизация отрисовки длинных списков: браузер скипает
+   покраску карточек, которые сейчас не видны на экране. */
+.moto-list > .moto-card,
+.events-list > li,
+.references-list > li,
+.riders-grid > * {
+  content-visibility: auto;
+  contain-intrinsic-size: 220px;
+}
+

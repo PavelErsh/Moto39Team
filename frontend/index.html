@@ -6,6 +6,64 @@
     <meta name="theme-color" content="#0e1210" />
     <meta name="description" content="MOTO39 — мотоциклистское сообщество." />
     <title>MOTO39</title>
+
+    <!--
+      Шрифты грузим асинхронно, чтобы не блокировать первую отрисовку
+      (раньше был синхронный @import из index.css — он мог задерживать
+      рендер на 200-800мс на слабом мобильном соединении).
+      preconnect + display=swap = быстрый первый экран.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      />
+    </noscript>
+
+    <!--
+      Мини-скрипт: заранее ставим класс .low-end на <html>, если устройство
+      определено как слабое. Это делается ДО загрузки/парсинга основного
+      JS-бандла, чтобы первый кадр уже отрисовался без тяжёлых эффектов
+      (blur/тени/сканлайны). Полная логика — в src/utils/performance.ts.
+    -->
+    <script>
+      (function () {
+        try {
+          var nav = navigator;
+          var qs = new URLSearchParams(location.search);
+          var override = qs.get('lite');
+          var ls = null;
+          try { ls = localStorage.getItem('lowEnd'); } catch (e) {}
+          var forced = override === '1' || ls === '1';
+          var disabled = override === '0' || ls === '0';
+
+          var lowCPU = typeof nav.hardwareConcurrency === 'number'
+            && nav.hardwareConcurrency > 0 && nav.hardwareConcurrency <= 4;
+          var lowMem = typeof nav.deviceMemory === 'number'
+            && nav.deviceMemory > 0 && nav.deviceMemory <= 4;
+          var narrow = typeof window.innerWidth === 'number'
+            && window.innerWidth > 0 && window.innerWidth <= 380;
+          var rm = false, rt = false;
+          try {
+            rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+            rt = matchMedia('(prefers-reduced-transparency: reduce)').matches;
+          } catch (e) {}
+
+          var isLow = forced || (!disabled && (lowCPU || lowMem || narrow || rm || rt));
+          if (isLow) {
+            document.documentElement.classList.add('low-end');
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
