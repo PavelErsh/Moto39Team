@@ -72,7 +72,14 @@ body,
   margin: 0;
   padding: 0;
   min-height: 100%;
+  /* Полностью отключаем горизонтальный (боковой) скролл — на любых
+     устройствах, но особенно важно для мобильных, где случайный
+     overflow по X вызывает раздражающую полосу и болтанку страницы. */
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
+
 
 body {
   color: var(--text);
