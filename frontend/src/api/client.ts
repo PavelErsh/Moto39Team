@@ -34,6 +34,11 @@ function resolveBaseUrl(): string {
 
 const API_URL = resolveBaseUrl()
 
+/**
+ * Публичный baseURL API. Используется, например, Service Worker'ом
+ * для отправки координат при закрытой вкладке (см. sw.js).
+ */
+export const API_BASE_URL = API_URL
 
 export const api = axios.create({
   baseURL: API_URL,

@@ -1,27 +1,37 @@
 /**
  * Глобальный трекер геолокации MOTO39.
  *
- * Отслеживание работает ВСЕГДА, пока пользователь авторизован — независимо
- * от того, открыта ли страница «Карта». Сервис запускается один раз из
- * `AuthContext` сразу после логина и живёт всё время сессии.
+ * Задача: приложение должно отправлять актуальную позицию пользователя на
+ * бэкенд ВСЕГДА, пока пользователь авторизован — и когда приложение
+ * открыто, и когда свёрнуто, и (по возможности) когда закрыто.
  *
- *   • В нативной сборке Capacitor (Android/iOS) используем плагин
- *     `@capacitor-community/background-geolocation`. Он держит на Android
- *     foreground-service с постоянным уведомлением, поэтому ОС не убивает
- *     процесс, и координаты приходят даже когда приложение свёрнуто или
- *     экран телефона выключен. На iOS используются significant location
- *     changes (в фоне и после перезагрузки телефона).
+ * Что здесь реализовано:
  *
- *   • В веб-браузере фон невозможен (браузеры не дают JS работать после
- *     сворачивания вкладки), но пока вкладка открыта — мы всё равно шлём
- *     координаты через `navigator.geolocation.watchPosition`, независимо
- *     от того, на какой странице сейчас находится пользователь. Последний
- *     фикс кэшируется в `localStorage`, чтобы при возврате на «Карту»
- *     пользователь сразу увидел себя, не дожидаясь нового GPS-сигнала.
+ *   1) НАТИВНАЯ СБОРКА (Android/iOS через Capacitor)
+ *      Используется плагин `@capacitor-community/background-geolocation`:
+ *      • На Android плагин держит foreground-service c постоянным
+ *        уведомлением, поэтому ОС не убивает процесс, координаты
+ *        доставляются даже при свёрнутом или закрытом приложении.
+ *      • На iOS используются significant location changes: iOS сама
+ *        будит приложение при существенных перемещениях (в т.ч. после
+ *        перезагрузки телефона).
+ *      Для этого также нужны правильные разрешения в AndroidManifest.xml
+ *      и ключи в Info.plist — их проставляет `scripts/patch-native.mjs`.
  *
- * Другие компоненты (в первую очередь `MapPage`) подписываются на
- * обновления координат через `subscribeLocation()` — так у нас один
- * источник правды и не запускается несколько параллельных `watchPosition`.
+ *   2) ВЕБ (обычный браузер)
+ *      Пока вкладка открыта — трекаем через `navigator.geolocation.
+ *      watchPosition`. Работает на всех страницах, а не только на /map.
+ *      Для доставки координат ПОСЛЕ закрытия вкладки регистрируется
+ *      Service Worker (см. `public/sw.js`) и запрашивается разрешение
+ *      Periodic Background Sync (Chrome/Edge для установленных PWA).
+ *      В Safari/Firefox фон принципиально невозможен — SW всё равно
+ *      полезен: он умеет доотправить последний фикс при следующем
+ *      подключении к сети (one-shot Background Sync).
+ *
+ * Последний фикс всегда кэшируется:
+ *   • в `localStorage` — чтобы UI мог мгновенно показать метку,
+ *   • в IndexedDB — чтобы Service Worker (без доступа к localStorage)
+ *     мог прочитать её и отправить сам.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type {
@@ -30,6 +40,7 @@ import type {
   Location as WatcherLocation,
 } from '@capacitor-community/background-geolocation'
 
+import { API_BASE_URL, tokenStorage } from '../api/client'
 import { apiUpdateMyLocation } from '../api/motorcycles'
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
@@ -66,6 +77,8 @@ let lastPushAt = 0
 let lastPushedLat: number | null = null
 let lastPushedLng: number | null = null
 let lastFix: LocationFix | null = null
+let swRegistration: ServiceWorkerRegistration | null = null
+let started = false
 
 /**
  * Минимальный интервал между отправками координат на бэкенд, мс.
@@ -85,6 +98,11 @@ const DISTANCE_FILTER_M = 20
  * настоящий GPS-сигнал.
  */
 const WEB_ACCURACY_THRESHOLD_M = 500
+/**
+ * Минимальный интервал Periodic Background Sync (мс). Ниже 12 минут
+ * спецификация всё равно не даст — браузер сам решает, когда будить.
+ */
+const PERIODIC_SYNC_INTERVAL_MS = 15 * 60_000
 
 // -----------------------------------------------------------------------------
 // Утилиты.
@@ -98,6 +116,8 @@ export function isNative(): boolean {
     return false
   }
 }
+
+// ---- localStorage-кэш ------------------------------------------------------
 
 function loadCachedFix(): LocationFix | null {
   if (typeof localStorage === 'undefined') return null
@@ -136,6 +156,72 @@ function clearCachedFix(): void {
     /* noop */
   }
 }
+
+// ---- IndexedDB (для Service Worker) ---------------------------------------
+
+const DB_NAME = 'moto39-bg'
+const DB_STORE = 'kv'
+
+function idbOpen(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('no indexedDB'))
+      return
+    }
+    const req = indexedDB.open(DB_NAME, 1)
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(DB_STORE)
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function idbSet(key: string, value: unknown): Promise<void> {
+  try {
+    const db = await idbOpen()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite')
+      tx.objectStore(DB_STORE).put(value, key)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch {
+    /* noop — работает только в SW-совместимых средах */
+  }
+}
+
+async function idbDelete(key: string): Promise<void> {
+  try {
+    const db = await idbOpen()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite')
+      tx.objectStore(DB_STORE).delete(key)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch {
+    /* noop */
+  }
+}
+
+/**
+ * Синхронизируем конфиг с IndexedDB, чтобы Service Worker мог сам
+ * стучаться на API (например, при Periodic Background Sync после
+ * закрытия вкладки). Токены могут обновиться при рефреше — вызывать
+ * можно при каждом фиксе, это дёшево.
+ */
+async function syncConfigToIdb(): Promise<void> {
+  const accessToken = tokenStorage.getAccess()
+  if (!accessToken) return
+  // apiUrl должен быть абсолютным, чтобы работать из SW-scope
+  const apiUrl = /^https?:/i.test(API_BASE_URL)
+    ? API_BASE_URL
+    : new URL(API_BASE_URL, self.location.origin).toString()
+  await idbSet('config', { apiUrl, accessToken })
+}
+
+// ---- Общие ----------------------------------------------------------------
 
 /**
  * Последняя известная точка (или из памяти, или из кэша localStorage).
@@ -203,6 +289,10 @@ async function handleFix(
   }
   lastFix = fix
   saveCachedFix(fix)
+  // Асинхронно кладём в IndexedDB — оттуда Service Worker сможет прочитать
+  // и отправить координату даже при закрытой вкладке.
+  void idbSet('lastFix', fix)
+  void syncConfigToIdb()
 
   // 1) Оповещаем подписчиков (карта, статусная строка и т.д.).
   listeners.forEach((cb) => {
@@ -221,8 +311,72 @@ async function handleFix(
   try {
     await apiUpdateMyLocation({ lat, lng, accuracy })
   } catch {
-    // Тихо игнорируем: сеть могла отвалиться (метро, лес).
-    // При следующем фиксе попробуем ещё раз. Не критично для UX.
+    // Сеть могла отвалиться (метро, лес). Просим Service Worker
+    // доотправить координату, когда сеть появится (one-shot Sync).
+    void requestOneShotSync()
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Service Worker: регистрация + Periodic Background Sync.
+// -----------------------------------------------------------------------------
+
+async function registerServiceWorker(): Promise<void> {
+  if (typeof navigator === 'undefined') return
+  if (!('serviceWorker' in navigator)) return
+
+  try {
+    swRegistration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+    })
+  } catch {
+    swRegistration = null
+  }
+}
+
+async function requestPeriodicSync(): Promise<void> {
+  if (!swRegistration) return
+  const reg = swRegistration as ServiceWorkerRegistration & {
+    periodicSync?: {
+      register: (tag: string, options: { minInterval: number }) => Promise<void>
+    }
+  }
+  if (!reg.periodicSync) return
+
+  try {
+    // Проверяем permission через Permissions API (не все браузеры знают
+    // о 'periodic-background-sync', поэтому обходим типы через unknown).
+    if ('permissions' in navigator) {
+      try {
+        const perms = navigator.permissions as unknown as {
+          query: (d: { name: string }) => Promise<PermissionStatus>
+        }
+        const status = await perms.query({ name: 'periodic-background-sync' })
+        if (status.state !== 'granted') return
+      } catch {
+        // Браузер не знает такого permission — пробуем зарегистрировать
+        // напрямую (если не разрешено, `register` кинет исключение).
+      }
+    }
+    await reg.periodicSync.register('moto39-location-sync', {
+      minInterval: PERIODIC_SYNC_INTERVAL_MS,
+    })
+  } catch {
+    // Пользователь не давал permission, либо браузер не поддерживает —
+    // это ок, просто не будет фоновой доставки для веба.
+  }
+}
+
+async function requestOneShotSync(): Promise<void> {
+  if (!swRegistration) return
+  const reg = swRegistration as ServiceWorkerRegistration & {
+    sync?: { register: (tag: string) => Promise<void> }
+  }
+  if (!reg.sync) return
+  try {
+    await reg.sync.register('moto39-location-flush')
+  } catch {
+    /* noop */
   }
 }
 
@@ -350,10 +504,41 @@ export async function startBackgroundLocation(): Promise<void> {
   // Прогружаем кеш заранее, чтобы `getLastFix()` работал сразу.
   if (!lastFix) lastFix = loadCachedFix()
 
+  if (started) return
+  started = true
+
+  // Синхронизируем конфиг для SW сразу — вдруг сеть отвалится ещё до
+  // первого фикса, но у SW уже будет закэшированная точка с прошлой сессии.
+  void syncConfigToIdb()
+
   if (isNative()) {
     await startNativeWatcher()
   } else {
     startWebWatcher()
+    // На вебе дополнительно поднимаем Service Worker + Periodic Sync.
+    // Это единственный (кроме нативной сборки) способ доставлять
+    // координаты, когда вкладка закрыта.
+    await registerServiceWorker()
+    await requestPeriodicSync()
+
+    // Когда вкладка уходит в фон, страничный watchPosition в большинстве
+    // браузеров перестаёт срабатывать. Дадим SW команду «отправь то, что
+    // есть, прямо сейчас» — так в БД райдера окажется свежая точка.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          void syncConfigToIdb()
+          const sw = swRegistration?.active ?? navigator.serviceWorker?.controller
+          try {
+            sw?.postMessage({ type: 'flush-location' })
+          } catch {
+            /* noop */
+          }
+          // Дополнительно ставим one-shot sync — вдруг сети сейчас нет.
+          void requestOneShotSync()
+        }
+      })
+    }
   }
 }
 
@@ -363,13 +548,26 @@ export async function stopBackgroundLocation(): Promise<void> {
     await stopNativeWatcher()
   } else {
     stopWebWatcher()
+    // Снимаем Periodic Sync — на чужом аккаунте наши координаты не нужны.
+    const reg = swRegistration as
+      | (ServiceWorkerRegistration & {
+          periodicSync?: { unregister: (tag: string) => Promise<void> }
+        })
+      | null
+    try {
+      await reg?.periodicSync?.unregister('moto39-location-sync')
+    } catch {
+      /* noop */
+    }
   }
   lastPushAt = 0
   lastPushedLat = null
   lastPushedLng = null
-  // Сам кэш последней точки чистим — на другом аккаунте она нам не нужна.
   clearCachedFix()
+  await idbDelete('lastFix')
+  await idbDelete('config')
   lastFix = null
+  started = false
 }
 
 /** Открыть системные настройки приложения (только в нативной сборке). */
