@@ -2,34 +2,51 @@
 /**
  * Service Worker MOTO39.
  *
- * Основная цель — доставлять последнюю геопозицию райдера на бэкенд даже
- * тогда, когда вкладка с приложением закрыта. В браузерном вебе это
- * возможно двумя путями:
+ * Три задачи:
  *
- *   1) Periodic Background Sync — запускает нас с интервалом (мин. 12 мин
- *      по спецификации; фактический интервал определяет браузер по
- *      «engagement score» — как часто пользователь запускает установленное
- *      PWA). Работает в Chrome/Edge для установленных PWA.
+ *   1) Быть «инсталляционным» SW, чтобы браузер согласился установить
+ *      сайт как PWA. Без активного SW Chrome/Android не даст кнопку
+ *      «Установить приложение».
  *
- *   2) One-shot Background Sync — если во время последней сессии не удалось
- *      отправить координату (нет сети), SW дождётся её появления и повторит.
+ *   2) Кэшировать статику (index.html + бандлы) по стратегии
+ *      network-first-with-fallback: онлайн — всегда свежая версия,
+ *      оффлайн — приложение всё равно открывается из кэша.
  *
- * На все остальные браузеры (Safari, Firefox) регистрация SW тоже полезна
- * — они хотя бы кешируют статику и не отваливают приложение при потере
- * сети. Логика геолокации в фоне там просто пропускается.
+ *   3) Доставлять последнюю известную геопозицию на бэкенд, когда
+ *      вкладка/приложение временно спит:
  *
- * Важно: SW не имеет прямого доступа к GPS. Он читает последнюю известную
- * точку из IndexedDB (её пишет туда основной поток) и шлёт на бэкенд с
- * тем же access-токеном, что и в основном приложении.
+ *      • Periodic Background Sync (только Chrome/Android для установленных
+ *        PWA, не Safari, не Firefox) — SW сам просыпается раз в ~15 мин,
+ *        читает точку из IndexedDB и делает POST на бэкенд.
+ *      • One-shot Background Sync — если основной поток не смог
+ *        отправить координату (нет сети), SW дождётся сети и повторит.
+ *      • Сообщение `flush-location` от страницы — например, когда
+ *        вкладка уходит в фон.
+ *
+ * ВАЖНОЕ ОГРАНИЧЕНИЕ: SW не может «крутиться» бесконечно. Даже когда
+ * пользователь разрешил всё, что можно, браузер убивает SW через 30 сек
+ * без событий. Настоящий 24/7 GPS-трекинг в вебе невозможен — для этого
+ * есть нативная сборка Capacitor (см. src/services/backgroundLocation.ts).
  */
 
-const CACHE_VERSION = 'moto39-v1'
+const CACHE_VERSION = 'moto39-v2'
 const DB_NAME = 'moto39-bg'
 const DB_STORE = 'kv'
 
+// Файлы, которые кладём в кэш при установке SW, чтобы приложение
+// открывалось даже без сети (offline shell). Всё остальное кэшируется
+// по мере первого запроса.
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.webmanifest',
+  '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+]
+
 // -----------------------------------------------------------------------------
-// Мини-обёртка над IndexedDB для передачи данных между страницей и SW.
-// (localStorage из SW недоступен.)
+// IndexedDB для передачи данных между страницей и SW.
 // -----------------------------------------------------------------------------
 
 function idbOpen() {
@@ -59,15 +76,25 @@ async function idbGet(key) {
 // -----------------------------------------------------------------------------
 
 self.addEventListener('install', (event) => {
-  // Активируемся сразу, не ждём закрытия старых вкладок.
-  event.waitUntil(self.skipWaiting())
+  event.waitUntil(
+    (async () => {
+      // Прогреваем кэш со «скелетом» приложения.
+      try {
+        const cache = await caches.open(CACHE_VERSION)
+        await cache.addAll(PRECACHE_URLS)
+      } catch {
+        // Не критично: конкретные файлы могут ещё не быть на сервере
+        // при первой сборке. Кэш подхватит их при первом реальном запросе.
+      }
+      await self.skipWaiting()
+    })(),
+  )
 })
 
 self.addEventListener('activate', (event) => {
-  // Забираем контроль над уже открытыми страницами.
   event.waitUntil(
     (async () => {
-      // Чистим старые кеши других версий.
+      // Чистим кэши старых версий.
       const keys = await caches.keys()
       await Promise.all(
         keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)),
@@ -75,6 +102,91 @@ self.addEventListener('activate', (event) => {
       await self.clients.claim()
     })(),
   )
+})
+
+// -----------------------------------------------------------------------------
+// Стратегия ответов:
+//   • навигационные (SPA-переходы) — network first, fallback на /index.html
+//     (это то, что позволяет установленному PWA открываться без интернета);
+//   • статические ассеты (JS/CSS/иконки/шрифты) — stale-while-revalidate;
+//   • все запросы к /api/** пропускаем «как есть» — их кэшировать нельзя,
+//     они авторизованные и меняются.
+// -----------------------------------------------------------------------------
+
+function isApiRequest(url) {
+  return (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/media/')
+  )
+}
+
+function isAssetRequest(req) {
+  const dest = req.destination
+  return (
+    dest === 'script' ||
+    dest === 'style' ||
+    dest === 'image' ||
+    dest === 'font'
+  )
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event
+  if (request.method !== 'GET') return
+
+  let url
+  try {
+    url = new URL(request.url)
+  } catch {
+    return
+  }
+  if (url.origin !== self.location.origin) return
+  if (isApiRequest(url)) return
+
+  // Навигация — network first.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          const fresh = await fetch(request)
+          const cache = await caches.open(CACHE_VERSION)
+          cache.put('/index.html', fresh.clone()).catch(() => {})
+          return fresh
+        } catch {
+          const cached = await caches.match('/index.html')
+          if (cached) return cached
+          // Совсем нет — минимальная заглушка, чтобы не белый экран.
+          return new Response(
+            '<!doctype html><meta charset="utf-8"><title>MOTO39</title>' +
+              '<body style="background:#0e1210;color:#f5f5f5;font:16px system-ui;' +
+              'display:flex;align-items:center;justify-content:center;height:100vh;">' +
+              'Нет соединения</body>',
+            { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+          )
+        }
+      })(),
+    )
+    return
+  }
+
+  // Ассеты — отдаём из кэша, параллельно обновляем.
+  if (isAssetRequest(request)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE_VERSION)
+        const cached = await cache.match(request)
+        const network = fetch(request)
+          .then((resp) => {
+            if (resp && resp.status === 200) {
+              cache.put(request, resp.clone()).catch(() => {})
+            }
+            return resp
+          })
+          .catch(() => null)
+        return cached || (await network) || new Response('', { status: 504 })
+      })(),
+    )
+  }
 })
 
 // -----------------------------------------------------------------------------
@@ -108,22 +220,18 @@ async function pushLastLocation(reason) {
   }
 }
 
-// Periodic Background Sync (Chrome/Android PWA).
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'moto39-location-sync') {
     event.waitUntil(pushLastLocation('periodic'))
   }
 })
 
-// One-shot Background Sync — вызывается страницей, когда не удалось
-// отправить координаты в основном потоке (нет сети).
 self.addEventListener('sync', (event) => {
   if (event.tag === 'moto39-location-flush') {
     event.waitUntil(pushLastLocation('sync'))
   }
 })
 
-// Сообщения от страницы — например, «отправь прямо сейчас».
 self.addEventListener('message', (event) => {
   const data = event.data
   if (!data || typeof data !== 'object') return

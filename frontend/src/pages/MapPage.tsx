@@ -9,6 +9,7 @@ import {
   subscribeLocation,
   type LocationFix,
 } from '../services/backgroundLocation'
+import InstallPwaHint from '../components/InstallPwaHint'
 
 // Калининград — центр по умолчанию
 const DEFAULT_CENTER: [number, number] = [54.7104, 20.4522]
@@ -536,6 +537,7 @@ export default function MapPage() {
 
   return (
     <div className="map-page">
+      <InstallPwaHint />
       <div className="map-page__head">
         <div>
           <h1 className="map-page__title">Карта</h1>

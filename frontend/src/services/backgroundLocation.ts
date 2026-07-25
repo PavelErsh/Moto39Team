@@ -39,6 +39,8 @@ import type {
   CallbackError,
   Location as WatcherLocation,
 } from '@capacitor-community/background-geolocation'
+import { App as CapacitorApp } from '@capacitor/app'
+import type { PluginListenerHandle } from '@capacitor/core'
 
 import { API_BASE_URL, tokenStorage } from '../api/client'
 import { apiUpdateMyLocation } from '../api/motorcycles'
@@ -46,6 +48,7 @@ import { apiUpdateMyLocation } from '../api/motorcycles'
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
   'BackgroundGeolocation',
 )
+
 
 // -----------------------------------------------------------------------------
 // Публичный контракт сервиса.
@@ -79,6 +82,13 @@ let lastPushedLng: number | null = null
 let lastFix: LocationFix | null = null
 let swRegistration: ServiceWorkerRegistration | null = null
 let started = false
+/** Обработчики жизненного цикла Capacitor-приложения (Android/iOS). */
+let appStateListener: PluginListenerHandle | null = null
+let appResumeListener: PluginListenerHandle | null = null
+let appPauseListener: PluginListenerHandle | null = null
+/** Обработчики жизненного цикла страницы (веб). */
+let webVisibilityHandler: (() => void) | null = null
+let webPageHideHandler: (() => void) | null = null
 
 /**
  * Минимальный интервал между отправками координат на бэкенд, мс.
@@ -271,6 +281,7 @@ async function handleFix(
   lat: number,
   lng: number,
   accuracy: number | null,
+  opts: { force?: boolean } = {},
 ): Promise<void> {
   if (
     typeof lat !== 'number' ||
@@ -304,7 +315,7 @@ async function handleFix(
   })
 
   // 2) Отправляем на бэкенд, чтобы другие райдеры увидели нашу точку.
-  if (!shouldPushToServer(lat, lng)) return
+  if (!opts.force && !shouldPushToServer(lat, lng)) return
   lastPushAt = Date.now()
   lastPushedLat = lat
   lastPushedLng = lng
@@ -314,6 +325,68 @@ async function handleFix(
     // Сеть могла отвалиться (метро, лес). Просим Service Worker
     // доотправить координату, когда сеть появится (one-shot Sync).
     void requestOneShotSync()
+  }
+}
+
+/**
+ * Форсированно отправить последнюю известную точку на бэкенд.
+ * Используется в момент, когда приложение уходит в фон/закрывается,
+ * чтобы гарантировать, что серверная БД получит свежее «last_seen».
+ * Работает через `sendBeacon`, если возможно (не блокирует выгрузку
+ * страницы, доставляется даже если вкладка закрывается прямо сейчас).
+ */
+async function flushLastFix(reason: string): Promise<void> {
+  const fix = lastFix ?? loadCachedFix()
+  if (!fix) return
+  const accessToken = tokenStorage.getAccess()
+  if (!accessToken) return
+
+  const apiUrl = /^https?:/i.test(API_BASE_URL)
+    ? API_BASE_URL
+    : new URL(
+        API_BASE_URL,
+        typeof self !== 'undefined' ? self.location.origin : 'http://localhost',
+      ).toString()
+
+  const url = `${apiUrl}/users/me/location`
+  const body = JSON.stringify({
+    lat: fix.lat,
+    lng: fix.lng,
+    accuracy: typeof fix.accuracy === 'number' ? fix.accuracy : null,
+  })
+
+  // sendBeacon НЕ поддерживает заголовки → используем fetch с keepalive,
+  // если он есть; если нет — обычный fetch.
+  try {
+    if (typeof fetch === 'function') {
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          'X-Moto39-Bg-Reason': reason,
+        },
+        body,
+        // keepalive гарантирует, что запрос уйдёт, даже если
+        // страница/приложение уходит в background в этот же тик.
+        keepalive: true,
+      })
+      lastPushAt = Date.now()
+      lastPushedLat = fix.lat
+      lastPushedLng = fix.lng
+      return
+    }
+  } catch {
+    /* noop — попробуем через beacon ниже */
+  }
+
+  try {
+    if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+      const blob = new Blob([body], { type: 'application/json' })
+      navigator.sendBeacon(url, blob)
+    }
+  } catch {
+    /* noop */
   }
 }
 
@@ -496,6 +569,121 @@ function stopWebWatcher(): void {
 // Публичное API.
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// Обработчики жизненного цикла приложения (backgrounded / resumed).
+// -----------------------------------------------------------------------------
+
+/**
+ * Навешиваем слушатели `App.appStateChange` / `pause` / `resume` из
+ * @capacitor/app. Смысл:
+ *   • При уходе приложения в фон — делаем финальный push последней
+ *     координаты «синхронно» через fetch(keepalive). Так, если Android
+ *     всё-таки убьёт процесс, у сервера всё равно будет свежее
+ *     `last_seen`.
+ *   • При возвращении из фона — сразу форсим один свежий фикс, чтобы
+ *     карта не показывала устаревшую точку 30+ секунд.
+ */
+async function attachNativeLifecycleHandlers(): Promise<void> {
+  if (appStateListener || appPauseListener || appResumeListener) return
+  try {
+    appStateListener = await CapacitorApp.addListener(
+      'appStateChange',
+      ({ isActive }) => {
+        if (isActive) {
+          // Приложение вернулось на передний план. Watcher продолжает
+          // работать в фоне благодаря foreground-service (Android)
+          // или significant-changes (iOS), но UI имеет смысл обновить.
+          void syncConfigToIdb()
+        } else {
+          // Уходим в фон — гарантируем, что бэкенд получит свежую точку.
+          void flushLastFix('app-background')
+        }
+      },
+    )
+  } catch {
+    appStateListener = null
+  }
+  try {
+    appPauseListener = await CapacitorApp.addListener('pause', () => {
+      void flushLastFix('app-pause')
+    })
+  } catch {
+    appPauseListener = null
+  }
+  try {
+    appResumeListener = await CapacitorApp.addListener('resume', () => {
+      void syncConfigToIdb()
+    })
+  } catch {
+    appResumeListener = null
+  }
+}
+
+async function detachNativeLifecycleHandlers(): Promise<void> {
+  try {
+    await appStateListener?.remove()
+  } catch {
+    /* noop */
+  }
+  try {
+    await appPauseListener?.remove()
+  } catch {
+    /* noop */
+  }
+  try {
+    await appResumeListener?.remove()
+  } catch {
+    /* noop */
+  }
+  appStateListener = null
+  appPauseListener = null
+  appResumeListener = null
+}
+
+function attachWebLifecycleHandlers(): void {
+  if (typeof document === 'undefined') return
+  if (webVisibilityHandler || webPageHideHandler) return
+
+  webVisibilityHandler = () => {
+    if (document.visibilityState === 'hidden') {
+      void syncConfigToIdb()
+      // 1) Через Service Worker (Chrome/Android PWA).
+      const sw =
+        swRegistration?.active ?? navigator.serviceWorker?.controller
+      try {
+        sw?.postMessage({ type: 'flush-location' })
+      } catch {
+        /* noop */
+      }
+      // 2) Прямо сейчас, keepalive-fetch — работает во всех современных
+      //    браузерах, включая мобильный Safari.
+      void flushLastFix('visibility-hidden')
+      // 3) One-shot sync — если сети нет сейчас, отправим позже.
+      void requestOneShotSync()
+    }
+  }
+  webPageHideHandler = () => {
+    // pagehide срабатывает даже при полном закрытии вкладки (в отличие
+    // от visibilitychange, который иногда не успевает).
+    void flushLastFix('page-hide')
+  }
+
+  document.addEventListener('visibilitychange', webVisibilityHandler)
+  window.addEventListener('pagehide', webPageHideHandler)
+}
+
+function detachWebLifecycleHandlers(): void {
+  if (typeof document === 'undefined') return
+  if (webVisibilityHandler) {
+    document.removeEventListener('visibilitychange', webVisibilityHandler)
+    webVisibilityHandler = null
+  }
+  if (webPageHideHandler) {
+    window.removeEventListener('pagehide', webPageHideHandler)
+    webPageHideHandler = null
+  }
+}
+
 /**
  * Запускает трекинг. Безопасно вызывать несколько раз — повторный вызов
  * ничего не сломает, watcher создаётся только один раз.
@@ -513,6 +701,7 @@ export async function startBackgroundLocation(): Promise<void> {
 
   if (isNative()) {
     await startNativeWatcher()
+    await attachNativeLifecycleHandlers()
   } else {
     startWebWatcher()
     // На вебе дополнительно поднимаем Service Worker + Periodic Sync.
@@ -520,25 +709,7 @@ export async function startBackgroundLocation(): Promise<void> {
     // координаты, когда вкладка закрыта.
     await registerServiceWorker()
     await requestPeriodicSync()
-
-    // Когда вкладка уходит в фон, страничный watchPosition в большинстве
-    // браузеров перестаёт срабатывать. Дадим SW команду «отправь то, что
-    // есть, прямо сейчас» — так в БД райдера окажется свежая точка.
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-          void syncConfigToIdb()
-          const sw = swRegistration?.active ?? navigator.serviceWorker?.controller
-          try {
-            sw?.postMessage({ type: 'flush-location' })
-          } catch {
-            /* noop */
-          }
-          // Дополнительно ставим one-shot sync — вдруг сети сейчас нет.
-          void requestOneShotSync()
-        }
-      })
-    }
+    attachWebLifecycleHandlers()
   }
 }
 
@@ -546,8 +717,10 @@ export async function startBackgroundLocation(): Promise<void> {
 export async function stopBackgroundLocation(): Promise<void> {
   if (isNative()) {
     await stopNativeWatcher()
+    await detachNativeLifecycleHandlers()
   } else {
     stopWebWatcher()
+    detachWebLifecycleHandlers()
     // Снимаем Periodic Sync — на чужом аккаунте наши координаты не нужны.
     const reg = swRegistration as
       | (ServiceWorkerRegistration & {
