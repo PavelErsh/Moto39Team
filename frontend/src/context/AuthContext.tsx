@@ -20,6 +20,10 @@ import {
   type User,
 } from '../api/auth'
 import { tokenStorage } from '../api/client'
+import {
+  startBackgroundLocation,
+  stopBackgroundLocation,
+} from '../services/backgroundLocation'
 
 interface AuthContextValue {
   user: User | null
@@ -60,6 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
   }, [refreshUser])
 
+  // Как только у нас появляется авторизованный пользователь — запускаем
+  // фоновый трекинг геолокации. Работает только в нативной обёртке
+  // Capacitor (Android/iOS), на вебе это no-op — там координаты шлёт
+  // сама страница «Карта».
+  useEffect(() => {
+    if (user) {
+      void startBackgroundLocation()
+    } else {
+      void stopBackgroundLocation()
+    }
+  }, [user])
+
   const login = useCallback(async (username: string, password: string) => {
     const me = await apiLogin(username, password)
     setUser(me)
@@ -74,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(() => {
+    // Выключаем фоновый трекер до сброса токенов, иначе последний фикс
+    // может уйти на бэкенд без авторизации (получим 401).
+    void stopBackgroundLocation()
     apiLogout()
     setUser(null)
   }, [])

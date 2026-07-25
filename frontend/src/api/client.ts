@@ -1,12 +1,38 @@
 import axios, { AxiosError } from 'axios'
+import { Capacitor } from '@capacitor/core'
 
-// По умолчанию используем относительный путь — тогда запросы идут по тому же
-// протоколу и хосту, что и фронт (например, https://192.168.x.x:5173/api/v1),
-// а Vite dev-сервер проксирует их на локальный бэкенд FastAPI.
-// Это критично для мобильных браузеров, которые блокируют смешанный контент
-// (HTTPS-страница → HTTP API) и не разрешают доступ к геолокации на http.
-const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) || '/api/v1'
+// ---------------------------------------------------------------------------
+// Определяем baseURL для API.
+//
+// 1) Веб (обычный браузер / собранная статика за nginx):
+//    используем относительный путь `/api/v1`. Тогда запросы идут по тому же
+//    протоколу и хосту, что и фронт (HTTPS-страница → HTTPS API), а Vite
+//    dev-сервер проксирует их на FastAPI. Это критично для мобильных
+//    браузеров: они блокируют смешанный контент и не отдают геолокацию
+//    на http.
+//
+// 2) Нативная сборка Capacitor (Android/iOS):
+//    страница подгружается с origin вида `capacitor://localhost` — там
+//    нет никакого nginx-прокси, поэтому нужен абсолютный URL до бэкенда.
+//    Задаём его через `VITE_API_URL` в `.env` (например
+//    `https://moto39team.ru/api/v1`).
+// ---------------------------------------------------------------------------
+function resolveBaseUrl(): string {
+  const explicit = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+  if (explicit) return explicit
+  try {
+    if (Capacitor.isNativePlatform()) {
+      // Fallback для нативной сборки, если забыли выставить env.
+      // На проде должен быть выставлен VITE_API_URL.
+      return 'https://moto39team.ru/api/v1'
+    }
+  } catch {
+    /* noop */
+  }
+  return '/api/v1'
+}
+
+const API_URL = resolveBaseUrl()
 
 
 export const api = axios.create({

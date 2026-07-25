@@ -15,7 +15,9 @@ export default defineConfig({
   server: {
     host: true, // 0.0.0.0 — доступно с телефона в той же Wi-Fi сети
     port: 5173,
-    https: true,
+    // basicSsl подсунет самоподписанный сертификат; типы Vite не принимают
+    // просто `true`, поэтому передаём пустой объект (эквивалентно `true`).
+    https: {},
     strictPort: false,
     proxy: {
       '/api': {
