@@ -80,52 +80,82 @@ function loadYandexMaps(): Promise<any> {
   return window.__ymapsLoader
 }
 
+// Список CDN для Leaflet. Пробуем по очереди — если один недоступен
+// (например, unpkg.com блокируется прокси / Яндекс.Турбо, или падает
+// SRI-проверка при проксировании), переключаемся на следующий.
+// Важно: SRI (integrity) НЕ используем — в режиме Турбо Яндекс.Браузер
+// проксирует статику через свои сервера, из-за чего хеш не совпадает
+// и браузер блокирует скрипт/стиль. Именно это ломало карту.
+const LEAFLET_CDNS: Array<{ css: string; js: string }> = [
+  {
+    css: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css',
+    js: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+  },
+  {
+    css: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
+    js: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+  },
+  {
+    css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+    js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  },
+]
+
+function loadLeafletCss(href: string): void {
+  if (document.querySelector(`link[data-leaflet-css="${href}"]`)) return
+  // На всякий случай снимаем старые CSS-теги, чтобы не тянуть заблокированные
+  document
+    .querySelectorAll('link[data-leaflet="1"]')
+    .forEach((el) => el.parentNode?.removeChild(el))
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = href
+  link.dataset.leaflet = '1'
+  link.dataset.leafletCss = href
+  document.head.appendChild(link)
+}
+
+function loadLeafletScript(src: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = src
+    s.async = true
+    s.defer = true
+    s.dataset.leaflet = '1'
+    s.onload = () => {
+      if (window.L) resolve(window.L)
+      else reject(new Error('Leaflet не инициализировался'))
+    }
+    s.onerror = () =>
+      reject(new Error(`Не удалось загрузить Leaflet с ${src}`))
+    document.head.appendChild(s)
+  })
+}
+
 function loadLeaflet(): Promise<any> {
   if (typeof window === 'undefined') return Promise.reject('no window')
   if (window.L) return Promise.resolve(window.L)
   if (window.__leafletLoader) return window.__leafletLoader
 
-  window.__leafletLoader = new Promise((resolve, reject) => {
-    // CSS
-    if (!document.querySelector('link[data-leaflet="1"]')) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-      link.integrity =
-        'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='
-      link.crossOrigin = ''
-      link.dataset.leaflet = '1'
-      document.head.appendChild(link)
+  window.__leafletLoader = (async () => {
+    let lastErr: unknown = null
+    for (const cdn of LEAFLET_CDNS) {
+      try {
+        loadLeafletCss(cdn.css)
+        const L = await loadLeafletScript(cdn.js)
+        return L
+      } catch (e) {
+        lastErr = e
+        // Пробуем следующий CDN
+        continue
+      }
     }
-
-    const existing = document.querySelector<HTMLScriptElement>(
-      'script[data-leaflet="1"]',
+    throw new Error(
+      (lastErr as Error)?.message ||
+        'Не удалось загрузить карту (Leaflet). Проверьте интернет ' +
+          'или отключите режим «Турбо» в Яндекс.Браузере.',
     )
-    const onReady = () => {
-      if (!window.L) return reject(new Error('Leaflet не загрузился'))
-      resolve(window.L)
-    }
-    if (existing) {
-      existing.addEventListener('load', onReady, { once: true })
-      existing.addEventListener(
-        'error',
-        () => reject(new Error('Не удалось загрузить карту (Leaflet)')),
-        { once: true },
-      )
-      return
-    }
-    const s = document.createElement('script')
-    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    s.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
-    s.crossOrigin = ''
-    s.async = true
-    s.defer = true
-    s.dataset.leaflet = '1'
-    s.onload = onReady
-    s.onerror = () =>
-      reject(new Error('Не удалось загрузить карту (Leaflet)'))
-    document.head.appendChild(s)
-  })
+  })()
 
   return window.__leafletLoader
 }
