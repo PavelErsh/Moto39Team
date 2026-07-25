@@ -19,9 +19,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <nav className="nav">
             {user ? (
               <>
-                <NavLink to="/reference" className="nav-link" title="Мотосправка">
-                  📖 Справка
-                </NavLink>
+               
                 {user.is_superuser && (
                   <NavLink to="/admin" className="nav-link" title="Админка">
                     ⚙️ Админ
