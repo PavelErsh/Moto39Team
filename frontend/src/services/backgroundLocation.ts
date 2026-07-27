@@ -89,19 +89,37 @@ let appPauseListener: PluginListenerHandle | null = null
 /** Обработчики жизненного цикла страницы (веб). */
 let webVisibilityHandler: (() => void) | null = null
 let webPageHideHandler: (() => void) | null = null
+/**
+ * Heartbeat-таймер. Пока приложение свернуто и пользователь не движется,
+ * GPS-фиксов может не приходить — но нам всё равно надо периодически
+ * подтверждать «онлайн-статус» на сервере (last_seen обновляется вместе
+ * с координатой). Раз в HEARTBEAT_INTERVAL_MS дублируем последнюю
+ * известную точку keepalive-запросом.
+ */
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
 
 /**
  * Минимальный интервал между отправками координат на бэкенд, мс.
  * Слишком часто слать не нужно: нагрузка на сеть/батарею.
+ * 15 сек — компромисс: карта у других райдеров обновляется почти
+ * онлайн, но батарея не садится за пару часов.
  */
-const MIN_PUSH_INTERVAL_MS = 30_000
+const MIN_PUSH_INTERVAL_MS = 15_000
 /**
- * Минимальное смещение (в градусах, ~11 м), при котором форсим отправку
+ * Минимальное смещение (~5.5 м в градусах), при котором форсим отправку
  * до истечения интервала — райдер реально куда-то поехал.
  */
-const MIN_MOVE_DELTA = 0.0001
-/** Дистанционный фильтр нативного плагина (метры). Экономит батарею. */
-const DISTANCE_FILTER_M = 20
+const MIN_MOVE_DELTA = 0.00005
+/**
+ * Дистанционный фильтр нативного плагина (метры). Плагин отдаёт новый
+ * фикс, только если пользователь сместился хотя бы на столько.
+ * 10 м — тонкий баланс: моторный трафик отслеживается плавно (одна
+ * точка каждые несколько секунд на скорости), и при этом батарея
+ * заметно не садится.
+ */
+const DISTANCE_FILTER_M = 10
+
 /**
  * Максимально допустимая погрешность (в метрах) для веб-фиксов.
  * Всё, что хуже — считаем грубым IP/Wi-Fi фиксом и игнорируем, ждём
@@ -113,6 +131,14 @@ const WEB_ACCURACY_THRESHOLD_M = 500
  * спецификация всё равно не даст — браузер сам решает, когда будить.
  */
 const PERIODIC_SYNC_INTERVAL_MS = 15 * 60_000
+/**
+ * Heartbeat в фоне: каждые 60 сек «пингуем» бэкенд последней известной
+ * точкой, чтобы last_seen обновлялся даже когда пользователь стоит
+ * на месте. Работает только пока приложение свернуто (в foreground
+ * мы и так шлём фиксы через watcher).
+ */
+const HEARTBEAT_INTERVAL_MS = 60_000
+
 
 // -----------------------------------------------------------------------------
 // Утилиты.
@@ -583,6 +609,27 @@ function stopWebWatcher(): void {
  *   • При возвращении из фона — сразу форсим один свежий фикс, чтобы
  *     карта не показывала устаревшую точку 30+ секунд.
  */
+/**
+ * Запускает heartbeat-цикл: раз в HEARTBEAT_INTERVAL_MS пересылает
+ * последнюю известную точку на бэкенд. Нужен для случая, когда
+ * пользователь стоит на месте, а мы хотим, чтобы last_seen оставался
+ * свежим (для маркера «онлайн» на карте у других райдеров).
+ */
+function startHeartbeat(): void {
+  if (heartbeatTimer !== null) return
+  heartbeatTimer = setInterval(() => {
+    // flushLastFix сам возьмёт последний фикс из памяти/кэша и уйдёт
+    // keepalive-запросом — работает даже когда UI-поток JS «замерз».
+    void flushLastFix('heartbeat')
+  }, HEARTBEAT_INTERVAL_MS)
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer === null) return
+  clearInterval(heartbeatTimer)
+  heartbeatTimer = null
+}
+
 async function attachNativeLifecycleHandlers(): Promise<void> {
   if (appStateListener || appPauseListener || appResumeListener) return
   try {
@@ -592,11 +639,16 @@ async function attachNativeLifecycleHandlers(): Promise<void> {
         if (isActive) {
           // Приложение вернулось на передний план. Watcher продолжает
           // работать в фоне благодаря foreground-service (Android)
-          // или significant-changes (iOS), но UI имеет смысл обновить.
+          // или significant-changes (iOS), но heartbeat в фоне больше
+          // не нужен — watcher сам будет присылать фиксы.
+          stopHeartbeat()
           void syncConfigToIdb()
         } else {
-          // Уходим в фон — гарантируем, что бэкенд получит свежую точку.
+          // Уходим в фон — гарантируем, что бэкенд получит свежую точку,
+          // и запускаем heartbeat, чтобы last_seen обновлялся, даже
+          // если райдер стоит на месте (например, ждёт в пробке).
           void flushLastFix('app-background')
+          startHeartbeat()
         }
       },
     )
@@ -606,18 +658,21 @@ async function attachNativeLifecycleHandlers(): Promise<void> {
   try {
     appPauseListener = await CapacitorApp.addListener('pause', () => {
       void flushLastFix('app-pause')
+      startHeartbeat()
     })
   } catch {
     appPauseListener = null
   }
   try {
     appResumeListener = await CapacitorApp.addListener('resume', () => {
+      stopHeartbeat()
       void syncConfigToIdb()
     })
   } catch {
     appResumeListener = null
   }
 }
+
 
 async function detachNativeLifecycleHandlers(): Promise<void> {
   try {
@@ -660,8 +715,18 @@ function attachWebLifecycleHandlers(): void {
       void flushLastFix('visibility-hidden')
       // 3) One-shot sync — если сети нет сейчас, отправим позже.
       void requestOneShotSync()
+      // 4) Heartbeat: пока вкладка в фоне (но всё ещё жива в памяти),
+      //    setInterval продолжает срабатывать в большинстве браузеров
+      //    в дросселированном режиме (~1 раз в минуту), поэтому
+      //    heartbeat — это дешёвый способ поддерживать last_seen.
+      startHeartbeat()
+    } else {
+      // Вкладка вернулась — heartbeat больше не нужен, watchPosition
+      // снова будет присылать фиксы.
+      stopHeartbeat()
     }
   }
+
   webPageHideHandler = () => {
     // pagehide срабатывает даже при полном закрытии вкладки (в отличие
     // от visibilitychange, который иногда не успевает).
@@ -733,6 +798,7 @@ export async function stopBackgroundLocation(): Promise<void> {
       /* noop */
     }
   }
+  stopHeartbeat()
   lastPushAt = 0
   lastPushedLat = null
   lastPushedLng = null
@@ -742,6 +808,7 @@ export async function stopBackgroundLocation(): Promise<void> {
   lastFix = null
   started = false
 }
+
 
 /** Открыть системные настройки приложения (только в нативной сборке). */
 export async function openLocationSettings(): Promise<void> {

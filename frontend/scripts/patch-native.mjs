@@ -98,6 +98,38 @@ function patchAndroidManifest() {
     changed = true
   }
 
+  // 3) stopWithTask="false" — чтобы сервис НЕ убивался, когда
+  //    пользователь смахивает приложение из списка recent apps.
+  //    Именно это делает трекинг «пуленепробиваемым» на Android:
+  //    без этого атрибута любой свайп-из-таскбара останавливает
+  //    foreground-service и мы теряем координаты.
+  if (
+    xml.includes('BackgroundGeolocationService') &&
+    !/BackgroundGeolocationService[^>]*android:stopWithTask=/.test(xml)
+  ) {
+    xml = xml.replace(
+      /(<service[^>]*BackgroundGeolocationService[^>]*)(\/?>)/,
+      (_m, head, tail) =>
+        `${head} android:stopWithTask="false"${tail}`,
+    )
+    changed = true
+  }
+
+  // 4) Значок «отключить оптимизацию батареи» — некоторые вендоры
+  //    (Xiaomi/Huawei/Samsung) убивают foreground-service, если
+  //    приложение не входит в whitelist. Разрешение REQUEST_
+  //    IGNORE_BATTERY_OPTIMIZATIONS даёт возможность запросить
+  //    у пользователя это исключение (мы делаем это из кода).
+  const IGNORE_BATT = 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+  if (!xml.includes(`android:name="${IGNORE_BATT}"`)) {
+    xml = xml.replace(
+      /<manifest([^>]*)>/,
+      (match) =>
+        `${match}\n    <uses-permission android:name="${IGNORE_BATT}" />`,
+    )
+    changed = true
+  }
+
   if (changed) {
     fs.writeFileSync(ANDROID_MANIFEST, xml, 'utf8')
     console.log('[patch-native] AndroidManifest.xml обновлён')
