@@ -79,6 +79,11 @@ export interface PublicUser {
   is_active?: boolean
   created_at: string
   motorcycles: Motorcycle[]
+  // Последние известные координаты (могут отсутствовать, если пользователь
+  // ни разу не делился геолокацией / отключил её).
+  last_lat?: number | null
+  last_lng?: number | null
+  last_seen_at?: string | null
 }
 
 export async function apiGetPublicUser(username: string): Promise<PublicUser> {

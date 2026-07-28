@@ -178,6 +178,76 @@ function formatLastSeen(iso: string): string {
   return `${diffD} д назад`
 }
 
+/* ------------------------ Стили меток по свежести ----------------------- */
+//
+// Правила окраски маркеров райдеров на карте (см. ТЗ):
+//   • «в сети» (координаты обновлялись < 2 мин назад)   — зелёная;
+//   • до 15 минут                                       — жёлтая;
+//   • 15–60 минут                                       — красная;
+//   • более 60 минут                                    — полая (чёрный
+//     контур, белая заливка);
+//   • собственный маркер пользователя                    — красная с
+//     белыми краями.
+type MarkerStyle = {
+  /** Цвет обводки. */
+  border: string
+  /** Цвет заливки. */
+  fill: string
+  /** Название пресета Яндекс.Карт для аналогичного визуального стиля. */
+  yandexPreset: string
+  /** Цвет иконки Яндекс.Карт (используется вместе с пресетом). */
+  yandexIconColor: string
+}
+
+// Порог «в сети», минут. Немного больше интервала опроса чужих
+// координат (30 сек), чтобы метка не мигала между «зелёной» и «жёлтой».
+const ONLINE_THRESHOLD_MIN = 2
+
+const STYLE_ONLINE: MarkerStyle = {
+  border: '#16a34a',
+  fill: '#22c55e',
+  yandexPreset: 'islands#greenCircleDotIcon',
+  yandexIconColor: '#22c55e',
+}
+const STYLE_15MIN: MarkerStyle = {
+  border: '#ca8a04',
+  fill: '#eab308',
+  yandexPreset: 'islands#yellowCircleDotIcon',
+  yandexIconColor: '#eab308',
+}
+const STYLE_60MIN: MarkerStyle = {
+  border: '#b91c1c',
+  fill: '#ef4444',
+  yandexPreset: 'islands#redCircleDotIcon',
+  yandexIconColor: '#ef4444',
+}
+const STYLE_STALE: MarkerStyle = {
+  border: '#000000',
+  fill: '#ffffff',
+  // «Полая» метка: у Яндекса нет прямого пресета, используем светлую
+  // с белым цветом иконки — визуально это самый близкий аналог.
+  yandexPreset: 'islands#circleIcon',
+  yandexIconColor: '#ffffff',
+}
+const STYLE_ME: MarkerStyle = {
+  // Собственный маркер — красная точка в белой обводке.
+  border: '#ffffff',
+  fill: '#ef4444',
+  yandexPreset: 'islands#redCircleDotIcon',
+  yandexIconColor: '#ef4444',
+}
+
+function styleForRider(lastSeenIso: string): MarkerStyle {
+  const diffMin =
+    (Date.now() - new Date(lastSeenIso).getTime()) / 60_000
+  if (!Number.isFinite(diffMin) || diffMin < ONLINE_THRESHOLD_MIN) {
+    return STYLE_ONLINE
+  }
+  if (diffMin < 15) return STYLE_15MIN
+  if (diffMin < 60) return STYLE_60MIN
+  return STYLE_STALE
+}
+
 /* ------------------------------ Компонент ------------------------------ */
 
 export default function MapPage() {
@@ -335,8 +405,8 @@ export default function MapPage() {
             point,
             { balloonContent: 'Вы здесь', hintContent: 'Вы здесь' },
             {
-              preset: 'islands#redCircleDotIcon',
-              iconColor: '#ff2a2a',
+              preset: STYLE_ME.yandexPreset,
+              iconColor: STYLE_ME.yandexIconColor,
             },
           )
           map.geoObjects.add(meMarkerRef.current)
@@ -350,8 +420,8 @@ export default function MapPage() {
               [point, radius],
               {},
               {
-                fillColor: '#ff2a2a22',
-                strokeColor: '#ff2a2a',
+                fillColor: `${STYLE_ME.fill}22`,
+                strokeColor: STYLE_ME.fill,
                 strokeOpacity: 0.7,
                 strokeWidth: 1,
               },
@@ -372,12 +442,15 @@ export default function MapPage() {
         if (!L) return
 
         if (!meMarkerRef.current) {
+          // По ТЗ: «Пользователь — красная с белыми краями».
+          // Используем более крупный маркер с толстой белой обводкой,
+          // чтобы визуально выделять собственную позицию среди чужих.
           meMarkerRef.current = L.circleMarker(point, {
-            radius: 7,
-            color: '#ff2a2a',
-            weight: 2,
-            fillColor: '#ff2a2a',
-            fillOpacity: 0.9,
+            radius: 8,
+            color: STYLE_ME.border,
+            weight: 3,
+            fillColor: STYLE_ME.fill,
+            fillOpacity: 1,
           })
             .addTo(map)
             .bindTooltip('Вы здесь', { direction: 'top', offset: [0, -6] })
@@ -389,10 +462,10 @@ export default function MapPage() {
           if (!accuracyCircleRef.current) {
             accuracyCircleRef.current = L.circle(point, {
               radius,
-              color: '#ff2a2a',
+              color: STYLE_ME.fill,
               weight: 1,
               opacity: 0.7,
-              fillColor: '#ff2a2a',
+              fillColor: STYLE_ME.fill,
               fillOpacity: 0.13,
             }).addTo(map)
           } else {
@@ -471,6 +544,8 @@ export default function MapPage() {
       const point: [number, number] = [r.lat, r.lng]
       const title = r.full_name || r.username
       const label = `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
+      // Цвет метки зависит от времени последнего обновления координат.
+      const style = styleForRider(r.last_seen_at)
 
       const existing = markers.get(r.id)
 
@@ -486,8 +561,8 @@ export default function MapPage() {
               iconContent: (title[0] || '?').toUpperCase(),
             },
             {
-              preset: 'islands#blueCircleIcon',
-              iconColor: '#2a6bff',
+              preset: style.yandexPreset,
+              iconColor: style.yandexIconColor,
             },
           )
           map.geoObjects.add(placemark)
@@ -499,24 +574,36 @@ export default function MapPage() {
             hintContent: title,
             iconContent: (title[0] || '?').toUpperCase(),
           })
+          // Обновляем визуальный стиль на случай, если категория «свежести»
+          // сменилась с предыдущего опроса (например, райдер ушёл в оффлайн).
+          existing.options.set({
+            preset: style.yandexPreset,
+            iconColor: style.yandexIconColor,
+          })
         }
       } else {
         const L = window.L
         if (!L) continue
+        // Опции цвета/заливки Leaflet-круга для конкретной категории.
+        const leafletOpts = {
+          radius: 7,
+          color: style.border,
+          weight: 2,
+          fillColor: style.fill,
+          // «Полая» метка (более 60 минут) — прозрачная заливка не нужна:
+          // достаточно белого цвета, но чтобы её было хорошо видно на
+          // светлых участках карты, оставляем непрозрачную заливку.
+          fillOpacity: style === STYLE_STALE ? 1 : 0.85,
+        }
         if (!existing) {
-          const marker = L.circleMarker(point, {
-            radius: 7,
-            color: '#2a6bff',
-            weight: 2,
-            fillColor: '#2a6bff',
-            fillOpacity: 0.85,
-          })
+          const marker = L.circleMarker(point, leafletOpts)
             .addTo(map)
             .bindTooltip(label, { direction: 'top', offset: [0, -6] })
             .bindPopup(label)
           markers.set(r.id, marker)
         } else {
           existing.setLatLng(point)
+          existing.setStyle(leafletOpts)
           existing.setTooltipContent(label)
           existing.setPopupContent(label)
         }

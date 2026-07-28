@@ -2,6 +2,25 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { apiGetPublicUser, type PublicUser } from '../api/motorcycles'
+import RiderLocationMap from '../components/RiderLocationMap'
+
+function formatLastSeen(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const then = new Date(iso).getTime()
+  if (!Number.isFinite(then)) return null
+  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (diffSec < 60) return 'только что'
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin} мин назад`
+  const diffH = Math.round(diffMin / 60)
+  if (diffH < 24) return `${diffH} ч назад`
+  const diffD = Math.round(diffH / 24)
+  if (diffD < 30) return `${diffD} д назад`
+  const diffMo = Math.round(diffD / 30)
+  if (diffMo < 12) return `${diffMo} мес назад`
+  const diffY = Math.round(diffMo / 12)
+  return `${diffY} г назад`
+}
 
 export default function UserProfilePage() {
   const { username } = useParams<{ username: string }>()
@@ -34,6 +53,11 @@ export default function UserProfilePage() {
   if (!profile) return null
 
   const initial = (profile.username[0] || '?').toUpperCase()
+  const hasLocation =
+    typeof profile.last_lat === 'number' &&
+    typeof profile.last_lng === 'number'
+  const lastSeenText = formatLastSeen(profile.last_seen_at)
+  const displayName = profile.full_name || profile.username
 
   return (
     <section className="cabinet">
@@ -46,12 +70,46 @@ export default function UserProfilePage() {
           <div className="avatar">{initial}</div>
         )}
         <div>
-          <h1 className="cabinet__name">
-            {profile.full_name || profile.username}
-          </h1>
+          <h1 className="cabinet__name">{displayName}</h1>
           <p className="muted">@{profile.username}</p>
+          {lastSeenText && (
+            <p className="muted rider-profile__seen">
+              был(а) на связи {lastSeenText}
+            </p>
+          )}
         </div>
       </header>
+
+      <div className="rider-profile__map-block">
+        <div className="garage__head">
+          <h2 className="garage__title">📍 Последнее местоположение</h2>
+        </div>
+        {hasLocation ? (
+          <>
+            <div className="rider-map-wrap">
+              <RiderLocationMap
+                lat={profile.last_lat as number}
+                lng={profile.last_lng as number}
+                label={`${displayName}${
+                  lastSeenText ? ` · ${lastSeenText}` : ''
+                }`}
+              />
+            </div>
+            <p className="muted rider-profile__coords">
+              {(profile.last_lat as number).toFixed(5)},{' '}
+              {(profile.last_lng as number).toFixed(5)}
+              {lastSeenText ? `  ·  обновлено ${lastSeenText}` : ''}
+            </p>
+          </>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state__icon">🗺️</div>
+            <p className="muted">
+              Пользователь ещё не делился своей геолокацией.
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="garage__head">
         <h2 className="garage__title">🏍️ Гараж</h2>

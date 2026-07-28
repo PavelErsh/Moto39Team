@@ -1148,6 +1148,47 @@ img.emoji {
   background: #0a0d0a;
 }
 
+/* --- Мини-карта в публичном профиле райдера --- */
+.rider-profile__map-block {
+  margin-top: 20px;
+}
+
+.rider-map-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0a0d0a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.rider-map {
+  width: 100%;
+  height: clamp(240px, 40vh, 380px);
+  background: #0a0d0a;
+}
+
+.rider-profile__coords {
+  margin: 8px 2px 0;
+  font-size: 12px;
+}
+
+.rider-profile__seen {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+/* --- Статус "в сети / был(а) недавно" в карточке райдера --- */
+.rider-card__seen {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.rider-card__online {
+  color: #4dd06a;
+  font-weight: 600;
+}
+
 /* Яндекс.Карты — минимальные корректировки под тёмный фон обвязки */
 .map-canvas ymaps,
 .map-canvas .ymaps-2-1-79-map,
