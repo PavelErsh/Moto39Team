@@ -2,7 +2,8 @@ import { api } from './client'
 
 export interface EventItem {
   id: number
-  event_date: string // ISO date (YYYY-MM-DD)
+  event_date: string // ISO date (YYYY-MM-DD) — дата начала
+  end_date: string | null // ISO date (YYYY-MM-DD) — дата окончания (опц.)
   title: string
   organizer: string
   location: string
@@ -16,6 +17,7 @@ export interface EventItem {
 
 export interface EventPayload {
   event_date: string
+  end_date?: string | null
   title: string
   organizer: string
   location: string

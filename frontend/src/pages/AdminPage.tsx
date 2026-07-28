@@ -38,6 +38,7 @@ type Tab = 'events' | 'users' | 'references'
 
 const EMPTY_EVENT_FORM = {
   event_date: '',
+  end_date: '',
   title: '',
   organizer: '',
   location: '',
@@ -183,6 +184,7 @@ export default function AdminPage() {
     setEditingId(e.id)
     setForm({
       event_date: e.event_date,
+      end_date: e.end_date ?? '',
       title: e.title,
       organizer: e.organizer,
       location: e.location,
@@ -248,10 +250,21 @@ export default function AdminPage() {
       setEventsError('Дата, название, организатор и место обязательны')
       return
     }
+    if (form.end_date && form.end_date < form.event_date) {
+      setEventsError('Дата окончания не может быть раньше даты начала')
+      return
+    }
     setBusy(true)
     try {
+      // Если дата окончания не указана либо совпадает с датой начала —
+      // отправляем null (событие однодневное).
+      const endDate =
+        form.end_date && form.end_date !== form.event_date
+          ? form.end_date
+          : null
       const payload: EventPayload = {
         event_date: form.event_date,
+        end_date: endDate,
         title: form.title.trim(),
         organizer: form.organizer.trim(),
         location: form.location.trim(),
@@ -508,13 +521,30 @@ export default function AdminPage() {
               <form className="form" onSubmit={onSubmit} noValidate>
                 <div className="grid-2">
                   <label className="field">
-                    <span>Дата *</span>
+                    <span>Дата начала *</span>
                     <input
                       type="date"
                       required
                       value={form.event_date}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, event_date: e.target.value }))
+                      }
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>
+                      Дата окончания{' '}
+                      <small className="muted">
+                        (для многодневных)
+                      </small>
+                    </span>
+                    <input
+                      type="date"
+                      value={form.end_date}
+                      min={form.event_date || undefined}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, end_date: e.target.value }))
                       }
                       disabled={busy}
                     />
@@ -718,7 +748,11 @@ export default function AdminPage() {
                 <tbody>
                   {events.map((e) => (
                     <tr key={e.id}>
-                      <td className="events-table__date">{e.event_date}</td>
+                      <td className="events-table__date">
+                        {e.end_date && e.end_date !== e.event_date
+                          ? `${e.event_date} — ${e.end_date}`
+                          : e.event_date}
+                      </td>
                       <td>
                         {e.cover_image_url ? (
                           <div className="events-table__cover">

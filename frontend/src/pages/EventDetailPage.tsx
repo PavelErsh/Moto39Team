@@ -13,6 +13,39 @@ function parseDate(iso: string): Date {
   return new Date(iso + 'T00:00:00')
 }
 
+/**
+ * Отображает дату/диапазон дат мероприятия в человеко-читаемом виде
+ * с полными названиями месяцев (для «шапки» карточки).
+ *
+ *   • Один день:                "16 октября 2026"
+ *   • Разные дни, один месяц:   "16–18 октября 2026"
+ *   • Разные месяцы, один год:  "30 октября — 2 ноября 2026"
+ *   • Разные годы:              "30 декабря 2026 — 2 января 2027"
+ */
+function formatFullDateRange(startISO: string, endISO: string | null): string {
+  const s = parseDate(startISO)
+  if (!endISO || endISO === startISO) {
+    return `${s.getDate()} ${MONTHS_FULL[s.getMonth()]} ${s.getFullYear()}`
+  }
+  const e = parseDate(endISO)
+  if (s.getFullYear() !== e.getFullYear()) {
+    return (
+      `${s.getDate()} ${MONTHS_FULL[s.getMonth()]} ${s.getFullYear()} — ` +
+      `${e.getDate()} ${MONTHS_FULL[e.getMonth()]} ${e.getFullYear()}`
+    )
+  }
+  if (s.getMonth() !== e.getMonth()) {
+    return (
+      `${s.getDate()} ${MONTHS_FULL[s.getMonth()]} — ` +
+      `${e.getDate()} ${MONTHS_FULL[e.getMonth()]} ${e.getFullYear()}`
+    )
+  }
+  return (
+    `${s.getDate()}–${e.getDate()} ${MONTHS_FULL[s.getMonth()]} ` +
+    `${s.getFullYear()}`
+  )
+}
+
 export default function EventDetailPage() {
   const { id = '' } = useParams()
   const { user } = useAuth()
@@ -38,8 +71,7 @@ export default function EventDetailPage() {
 
   const dateStr = useMemo(() => {
     if (!item) return ''
-    const d = parseDate(item.event_date)
-    return `${d.getDate()} ${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`
+    return formatFullDateRange(item.event_date, item.end_date)
   }, [item])
 
   if (loading) {

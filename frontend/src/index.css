@@ -230,6 +230,18 @@ img.emoji {
   gap: 16px;
 }
 
+/*
+   На мобильных дополнительно приподнимаем содержимое шапки, чтобы
+   даже при небольшом env(safe-area-inset-top) (или его отсутствии
+   в обычном мобильном Safari) кнопки не попадали под "остров".
+   На десктопе это правило не срабатывает.
+*/
+@media (max-width: 760px) {
+  .site-header {
+    padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  }
+}
+
 .logo {
   display: inline-flex;
   align-items: center;

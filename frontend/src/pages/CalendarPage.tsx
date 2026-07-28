@@ -16,6 +16,37 @@ function parseDate(iso: string): Date {
   return new Date(iso + 'T00:00:00')
 }
 
+/**
+ * Формирует человеко-читаемую строку с диапазоном дат мероприятия.
+ *   • Один день:      "16 окт 2026"
+ *   • Один месяц:     "16–18 окт 2026"
+ *   • Разные месяцы:  "30 окт – 2 ноя 2026"
+ *   • Разные годы:    "30 дек 2026 – 2 янв 2027"
+ */
+function formatDateRange(startISO: string, endISO: string | null): string {
+  const s = parseDate(startISO)
+  if (!endISO || endISO === startISO) {
+    return `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} ${s.getFullYear()}`
+  }
+  const e = parseDate(endISO)
+  if (s.getFullYear() !== e.getFullYear()) {
+    return (
+      `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} ${s.getFullYear()} — ` +
+      `${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${e.getFullYear()}`
+    )
+  }
+  if (s.getMonth() !== e.getMonth()) {
+    return (
+      `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} — ` +
+      `${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${e.getFullYear()}`
+    )
+  }
+  return (
+    `${s.getDate()}–${e.getDate()} ${MONTHS_SHORT[s.getMonth()]} ` +
+    `${s.getFullYear()}`
+  )
+}
+
 export default function CalendarPage() {
   const [items, setItems] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,16 +77,24 @@ export default function CalendarPage() {
   }, [])
 
   const filtered = useMemo(() => {
-    const withDate = items.map((e) => ({ ev: e, date: parseDate(e.event_date) }))
+    // Для сортировки/фильтрации:
+    //   date       — дата начала (для сортировки),
+    //   lastDate   — дата окончания (для «прошедшее»: мероприятие считается
+    //                прошедшим только когда закончился последний день).
+    const withDate = items.map((e) => {
+      const start = parseDate(e.event_date)
+      const last = e.end_date ? parseDate(e.end_date) : start
+      return { ev: e, date: start, lastDate: last }
+    })
     if (filter === 'all') return withDate
     if (filter === 'past') {
       return withDate
-        .filter((x) => x.date < today)
+        .filter((x) => x.lastDate < today)
         .sort((a, b) => b.date.getTime() - a.date.getTime())
     }
-    // upcoming
+    // upcoming — событие ещё не закончилось (сегодня в диапазоне тоже сюда)
     return withDate
-      .filter((x) => x.date >= today)
+      .filter((x) => x.lastDate >= today)
       .sort((a, b) => a.date.getTime() - b.date.getTime())
   }, [items, filter, today])
 
@@ -63,8 +102,8 @@ export default function CalendarPage() {
     let upcoming = 0
     let past = 0
     for (const e of items) {
-      const d = parseDate(e.event_date)
-      if (d < today) past += 1
+      const last = e.end_date ? parseDate(e.end_date) : parseDate(e.event_date)
+      if (last < today) past += 1
       else upcoming += 1
     }
     return { upcoming, past, all: items.length }
@@ -127,12 +166,16 @@ export default function CalendarPage() {
         </div>
       ) : (
         <ul className="events-list">
-          {filtered.map(({ ev, date }) => {
-            const past = date < today
+          {filtered.map(({ ev, date, lastDate }) => {
+            const past = lastDate < today
             const day = date.getDate()
             const month = MONTHS_SHORT[date.getMonth()]
             const weekday = WEEKDAYS_SHORT[date.getDay()]
-            const year = date.getFullYear()
+            // Для многодневных событий в «крупной» плашке даты показываем
+            // диапазон дней месяца (например «16–18»).
+            const isRange = ev.end_date && ev.end_date !== ev.event_date
+            const endDay = isRange ? lastDate.getDate() : null
+            const dateLabel = formatDateRange(ev.event_date, ev.end_date)
             return (
               <li
                 key={ev.id}
@@ -151,7 +194,13 @@ export default function CalendarPage() {
                     </div>
                   )}
                   <div className="event-card__date" aria-hidden="true">
-                    <span className="event-card__day">{day}</span>
+                    <span className="event-card__day">
+                      {endDay != null &&
+                      lastDate.getMonth() === date.getMonth() &&
+                      lastDate.getFullYear() === date.getFullYear()
+                        ? `${day}–${endDay}`
+                        : day}
+                    </span>
                     <span className="event-card__month">{month}</span>
                     <span className="event-card__weekday">{weekday}</span>
                   </div>
@@ -163,9 +212,7 @@ export default function CalendarPage() {
                     <dl className="event-card__meta">
                       <div className="event-card__meta-row">
                         <dt aria-label="Дата">📅</dt>
-                        <dd>
-                          {day} {month} {year}
-                        </dd>
+                        <dd>{dateLabel}</dd>
                       </div>
                       <div className="event-card__meta-row">
                         <dt aria-label="Место">📍</dt>
