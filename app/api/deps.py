@@ -43,12 +43,21 @@ async def get_current_user(db: DbSession, token: TokenDep) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-async def get_current_active_user(current_user: CurrentUser) -> User:
+async def get_current_active_user(
+    current_user: CurrentUser, db: DbSession
+) -> User:
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Неактивный пользователь",
         )
+    # Пассивно обновляем «последнее время активности» пользователя на
+    # любом авторизованном запросе. Это гарантирует, что в списке
+    # райдеров и на карте `last_seen_at` двигается для любого «живого»
+    # пользователя, даже если он не делится геолокацией (например,
+    # отключил её в браузере). Реальная запись в БД происходит не чаще
+    # раза в минуту — см. `UserCRUD.touch_last_seen`.
+    await user_crud.touch_last_seen(db, current_user)
     return current_user
 
 

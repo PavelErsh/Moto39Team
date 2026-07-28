@@ -25,29 +25,57 @@ function formatLastSeen(iso: string | null | undefined): string | null {
 // Свежесть «онлайн» — активен последние 5 минут.
 const ONLINE_THRESHOLD_MS = 5 * 60 * 1000
 
+// Как часто перезапрашиваем список райдеров с бэкенда.
+// last_seen_at продвигается на любом активном запросе (в т.ч. на этом
+// самом опросе — см. `deps.get_current_active_user`), поэтому 30 секунд
+// хватает, чтобы список выглядел «живым».
+const REFRESH_INTERVAL_MS = 30_000
+// Как часто пересчитываем текст «X мин назад» без обращения к бэкенду.
+// Нужен, чтобы отметка меняла статус «в сети → 1 мин назад → 2 мин…»
+// в реальном времени, а не только при новом ответе API.
+const TICK_INTERVAL_MS = 30_000
+
 export default function RidersPage() {
   const [users, setUsers] = useState<PublicUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Счётчик тиков — заставляет пересчитать `sorted`/лейблы времени,
+  // даже если список пользователей не обновлялся с бэкенда.
+  const [, setTick] = useState(0)
 
   useEffect(() => {
     let alive = true
-    apiListUsers()
-      .then((data) => {
-        if (alive) {
-          // Заблокированные пользователи не должны отображаться в общем
-          // списке — даже если их вернул старый бэкенд без фильтрации.
-          setUsers(data.filter((u) => u.is_active !== false))
-        }
-      })
-      .catch((err) => {
+
+    const fetchOnce = async () => {
+      try {
+        const data = await apiListUsers()
+        if (!alive) return
+        // Заблокированные пользователи не должны отображаться в общем
+        // списке — даже если их вернул старый бэкенд без фильтрации.
+        setUsers(data.filter((u) => u.is_active !== false))
+        setError(null)
+      } catch (err) {
         if (alive) setError(extractApiError(err))
-      })
-      .finally(() => {
+      } finally {
         if (alive) setLoading(false)
-      })
+      }
+    }
+
+    void fetchOnce()
+    const refreshTimer = window.setInterval(fetchOnce, REFRESH_INTERVAL_MS)
+    // Локальный «тик» — просто дёргаем стейт, чтобы React перерисовал
+    // компонент и `formatLastSeen`/`isOnline` пересчитались от нового
+    // `Date.now()`. Иначе, если сервер вернул тот же список, отметка
+    // «только что» осталась бы навсегда.
+    const tickTimer = window.setInterval(
+      () => setTick((n) => (n + 1) % 1_000_000),
+      TICK_INTERVAL_MS,
+    )
+
     return () => {
       alive = false
+      window.clearInterval(refreshTimer)
+      window.clearInterval(tickTimer)
     }
   }, [])
 

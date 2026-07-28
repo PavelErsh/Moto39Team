@@ -21,13 +21,22 @@ class Event(Base):
 
     Хранит информацию о мото-мероприятиях, которую видят все пользователи,
     но редактировать могут только администраторы.
+
+    Мероприятие может занимать один день (`event_date`) либо несколько
+    дней — в этом случае указывается `end_date` (последний день события).
     """
 
     __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
+    # Дата начала мероприятия (для многодневных — первый день)
     event_date: Mapped[_date] = mapped_column(Date, nullable=False, index=True)
+    # Дата окончания (последний день). Опциональна: если не указана,
+    # событие считается однодневным.
+    end_date: Mapped[_date | None] = mapped_column(
+        Date, nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     organizer: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str] = mapped_column(String(255), nullable=False)

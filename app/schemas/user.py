@@ -50,6 +50,10 @@ class UserPublic(BaseModel):
     is_active: bool = True
     created_at: datetime
     motorcycles: list[MotorcycleRead] = []
+    # Последние известные координаты (для отображения на профиле/списке).
+    last_lat: float | None = None
+    last_lng: float | None = None
+    last_seen_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

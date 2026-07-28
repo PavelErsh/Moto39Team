@@ -110,7 +110,11 @@ async def list_users(
     db: DbSession,
 ) -> list[UserPublic]:
     # Заблокированные пользователи не попадают в общий публичный список.
-    users = await user_crud.list_all(db, active_only=True)
+    # Сортировка: сначала те, кто был активен недавно, в конце — те,
+    # кто давно не выходил в сеть (или ни разу не делился координатами).
+    users = await user_crud.list_all(
+        db, active_only=True, order_by_last_seen=True
+    )
     return [UserPublic.model_validate(u) for u in users]
 
 

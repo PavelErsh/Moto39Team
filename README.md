@@ -483,7 +483,16 @@ make front-lint      # eslint
   через `GET /users/locations`.
 - Старт трекера привязан к `AuthContext`: он стартует, как только
   появляется авторизованный пользователь, и останавливается при
-  логауте. На вебе `startBackgroundLocation()` — это no-op.
+  логауте.
+- Через `@capacitor/app` слушаем `appStateChange` / `pause` / `resume`:
+  как только приложение уходит в фон, форсим финальный push последней
+  точки в бэкенд через `fetch(..., { keepalive: true })`. Это
+  гарантирует, что даже если Android потом всё-таки убьёт процесс,
+  у сервера будет свежее `last_seen`.
+- На **вебе** (обычный браузер) отдельно висят `visibilitychange` и
+  `pagehide` — на них тоже выполняется keepalive-flush + попытка
+  разбудить Service Worker (`Background Sync` / `Periodic Sync`).
+
 
 ### Первичная настройка (один раз)
 
@@ -503,8 +512,23 @@ npx cap sync
 
 ### Android: разрешения для фонового GPS
 
-В `frontend/android/app/src/main/AndroidManifest.xml` внутри `<manifest>`
-добавьте:
+Все нужные разрешения ставятся автоматически скриптом
+`frontend/scripts/patch-native.mjs`, который вызывается npm-скриптом
+`cap:sync` (и `cap:run:android`). Патчер также:
+
+- проставляет `android:foregroundServiceType="location"` для
+  `BackgroundGeolocationService` (обязательно на Android 10+);
+- проставляет `android:stopWithTask="false"` — благодаря этому
+  foreground-service продолжает работать, даже если пользователь
+  смахнул приложение из списка recent-apps;
+- добавляет разрешение
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` — на «токсичных» прошивках
+  (Xiaomi/Huawei/Samsung) это позволяет попросить систему не убивать
+  фоновый сервис.
+
+Если вы хотите добавить их вручную, в
+`frontend/android/app/src/main/AndroidManifest.xml` внутри `<manifest>`
+должно быть:
 
 ```xml
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -513,7 +537,28 @@ npx cap sync
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 ```
+
+### Частота обновлений
+
+| Ситуация | Частота |
+|---|---|
+| Android, приложение открыто, райдер едет | точка каждые ~5-15 сек (или каждые 10 м) |
+| Android, приложение свёрнуто, райдер едет | то же самое — foreground-service работает без замедлений |
+| Android, приложение свёрнуто, райдер стоит | heartbeat раз в 60 сек — last_seen на сервере остаётся свежим |
+| Android, приложение смахнули из recent-apps | продолжает трекать (stopWithTask=false) |
+| iOS, приложение свёрнуто | 1 фикс каждые 5-15 мин или ~500 м (ограничение iOS) |
+| Web / установленное PWA, вкладка активна | GPS-фиксы по мере готовности + heartbeat раз в 60 сек |
+| Web / установленное PWA, вкладка в фоне | keepalive-flush + heartbeat пока таб жив; Periodic Sync раз в 15 мин |
+| Обычный веб-браузер, вкладка закрыта | один-shot Sync при возвращении в сеть |
+
+Настроить пороги можно константами
+`MIN_PUSH_INTERVAL_MS`, `DISTANCE_FILTER_M`, `MIN_MOVE_DELTA`,
+`HEARTBEAT_INTERVAL_MS` в `frontend/src/services/backgroundLocation.ts`.
+
 
 ### iOS: разрешения для фонового GPS
 

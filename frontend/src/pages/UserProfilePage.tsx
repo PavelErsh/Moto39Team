@@ -22,29 +22,57 @@ function formatLastSeen(iso: string | null | undefined): string | null {
   return `${diffY} г назад`
 }
 
+// Обновляем публичный профиль каждые 30 сек — так `last_seen_at` и
+// точка на карте не устаревают, пока страница открыта. Сам факт этого
+// запроса ещё и продвигает `last_seen_at` у текущего пользователя на
+// бэкенде (см. `deps.get_current_active_user`).
+const REFRESH_INTERVAL_MS = 30_000
+// Локальный тик, чтобы «X мин назад» пересчитывалось, даже если сервер
+// вернул тот же профиль.
+const TICK_INTERVAL_MS = 30_000
+
 export default function UserProfilePage() {
   const { username } = useParams<{ username: string }>()
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [, setTick] = useState(0)
 
   useEffect(() => {
     if (!username) return
     let alive = true
     setLoading(true)
     setError(null)
-    apiGetPublicUser(username)
-      .then((data) => {
-        if (alive) setProfile(data)
-      })
-      .catch((err) => {
-        if (alive) setError(extractApiError(err))
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
+
+    const fetchOnce = async (initial: boolean) => {
+      try {
+        const data = await apiGetPublicUser(username)
+        if (!alive) return
+        setProfile(data)
+        setError(null)
+      } catch (err) {
+        // При периодическом опросе не показываем ошибку, чтобы не
+        // «моргать» из-за случайного разрыва сети — просто оставляем
+        // старый профиль. Ошибку показываем только при первой загрузке.
+        if (initial && alive) setError(extractApiError(err))
+      } finally {
+        if (initial && alive) setLoading(false)
+      }
+    }
+
+    void fetchOnce(true)
+    const refreshTimer = window.setInterval(() => {
+      void fetchOnce(false)
+    }, REFRESH_INTERVAL_MS)
+    const tickTimer = window.setInterval(
+      () => setTick((n) => (n + 1) % 1_000_000),
+      TICK_INTERVAL_MS,
+    )
+
     return () => {
       alive = false
+      window.clearInterval(refreshTimer)
+      window.clearInterval(tickTimer)
     }
   }, [username])
 
