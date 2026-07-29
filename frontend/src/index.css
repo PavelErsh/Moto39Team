@@ -262,6 +262,19 @@ img.emoji {
   font-size: 32px;
   line-height: 1;
 }
+/*
+   Логотип-картинка в шапке (левый верхний угол).
+   Заменяет старую эмодзи-иконку 🏍️. Задаём фиксированную высоту,
+   чтобы «прыжок» вёрстки при подгрузке файла был минимальным.
+*/
+.logo-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+  flex: 0 0 40px;
+}
 .logo-text {
   line-height: 1;
 }
@@ -1145,6 +1158,95 @@ img.emoji {
   letter-spacing: 0.02em;
 }
 
+/*
+  Правая часть шапки страницы «Карта»: легенда + кнопка «Я здесь».
+  Оба элемента на одной горизонтальной линии; на узких экранах
+  переносятся ниже благодаря `flex-wrap: wrap` у `.map-page__head`.
+*/
+.map-page__controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Легенда точек рядом с кнопкой (расшифровка цветов маркеров). */
+.map-legend {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  min-height: 38px; /* совпадает с btn-sm — визуально одинаковая высота */
+  align-items: center;
+}
+.map-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.map-legend__dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+  flex: 0 0 11px;
+}
+/* Цвета — синхронизированы с STYLE_ONLINE / STYLE_15MIN / STYLE_60MIN /
+   STYLE_STALE в MapPage.tsx. Если правишь один — правь и второй. */
+.map-legend__dot--online {
+  background: #22c55e;
+  border-color: #16a34a;
+}
+.map-legend__dot--recent {
+  background: #eab308;
+  border-color: #ca8a04;
+}
+.map-legend__dot--away {
+  background: #ef4444;
+  border-color: #b91c1c;
+}
+.map-legend__dot--stale {
+  background: #ffffff;
+  border-color: #000000;
+}
+
+@media (max-width: 900px) {
+  /* На планшетах/телефонах легенда растягивается на всю доступную
+     ширину и переносится ниже заголовка, чтобы не сжимать надписи. */
+  .map-page__controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .map-legend {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .map-legend {
+    font-size: 11px;
+    gap: 4px 12px;
+    padding: 6px 10px;
+  }
+  .map-legend__item {
+    white-space: normal;
+  }
+}
+
 .map-wrap {
   position: relative;
   border: 1px solid var(--border);
@@ -1225,6 +1327,11 @@ img.emoji {
   .logo-mark {
     font-size: 24px;
   }
+  .logo-img {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
   .nav {
     gap: 6px;
   }
@@ -1247,6 +1354,11 @@ img.emoji {
   }
   .logo-mark {
     font-size: 20px;
+  }
+  .logo-img {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
   }
 }
 
@@ -2004,6 +2116,23 @@ img.emoji {
 }
 .reference-detail__content p:last-child {
   margin-bottom: 0;
+}
+
+/* Кликабельные ссылки внутри описания мероприятия / статьи мотосправки.
+   Наследуют общий стиль ссылок (акцентный зелёный), но добавляем
+   подчёркивание, чтобы визуально отличать URL/email от обычного текста. */
+.reference-detail__content .content-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(57, 255, 20, 0.5);
+  text-underline-offset: 2px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.reference-detail__content .content-link:hover {
+  color: var(--accent-2);
+  text-decoration-color: var(--accent-2);
 }
 
 .reference-detail__subtitle {

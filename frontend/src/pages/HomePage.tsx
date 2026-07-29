@@ -52,9 +52,24 @@ export default function HomePage() {
         </p>
       </section>
 
-      <Link to="/chat" className="chat-btn">
+      {/*
+        Кнопка «Общий чат» ведёт в публичную Telegram-группу сообщества.
+        Используем внешнюю ссылку с target="_blank", чтобы:
+          • на мобильных сразу открылся установленный клиент Telegram
+            (deep-link через t.me),
+          • на десктопе — открылась Telegram Web/страница входа в группу,
+          • основное приложение MOTO39 (PWA) не выгружалось из фонового
+            состояния при переходе.
+        rel="noopener noreferrer" — стандартная защита от tabnabbing.
+      */}
+      <a
+        href="https://t.me/mkld39"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="chat-btn"
+      >
         Общий чат
-      </Link>
+      </a>
 
       <nav className="tiles">
         {TILES.map((t) => (

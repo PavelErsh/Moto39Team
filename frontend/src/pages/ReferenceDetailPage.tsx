@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { apiGetReference, type ReferenceItem } from '../api/references'
 import { useAuth } from '../context/AuthContext'
+import { linkifyText } from '../utils/linkify'
 
 export default function ReferenceDetailPage() {
   const { slug = '' } = useParams()
@@ -82,7 +83,7 @@ export default function ReferenceDetailPage() {
             <p key={idx}>
               {para.split(/\n/).map((line, i, arr) => (
                 <span key={i}>
-                  {line}
+                  {linkifyText(line)}
                   {i < arr.length - 1 && <br />}
                 </span>
               ))}

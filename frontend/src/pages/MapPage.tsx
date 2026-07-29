@@ -642,14 +642,57 @@ export default function MapPage() {
               : status}
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={centerOnMe}
-          disabled={!coords}
-        >
-          Я здесь
-        </button>
+
+        {/*
+          Легенда точек и кнопка «Я здесь» вынесены в правую часть
+          шапки — визуально они на одной горизонтальной линии.
+          На узких экранах эта колонка переносится на новую строку
+          благодаря `flex-wrap: wrap` у `.map-page__head`.
+        */}
+        <div className="map-page__controls">
+          <ul
+            className="map-legend"
+            aria-label="Расшифровка точек на карте"
+          >
+            <li className="map-legend__item">
+              <span
+                className="map-legend__dot map-legend__dot--online"
+                aria-hidden="true"
+              />
+              <span>В сети</span>
+            </li>
+            <li className="map-legend__item">
+              <span
+                className="map-legend__dot map-legend__dot--recent"
+                aria-hidden="true"
+              />
+              <span>До 15 минут назад</span>
+            </li>
+            <li className="map-legend__item">
+              <span
+                className="map-legend__dot map-legend__dot--away"
+                aria-hidden="true"
+              />
+              <span>15–60 минут назад</span>
+            </li>
+            <li className="map-legend__item">
+              <span
+                className="map-legend__dot map-legend__dot--stale"
+                aria-hidden="true"
+              />
+              <span>Более 60 минут назад</span>
+            </li>
+          </ul>
+
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={centerOnMe}
+            disabled={!coords}
+          >
+            Я здесь
+          </button>
+        </div>
       </div>
 
       <div className="map-wrap">

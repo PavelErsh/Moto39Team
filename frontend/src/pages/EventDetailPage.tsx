@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { apiGetEvent, type EventItem } from '../api/events'
 import { useAuth } from '../context/AuthContext'
+import { linkifyText } from '../utils/linkify'
 
 const MONTHS_FULL = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -135,7 +136,7 @@ export default function EventDetailPage() {
             <p key={idx}>
               {para.split(/\n/).map((line, i, arr) => (
                 <span key={i}>
-                  {line}
+                  {linkifyText(line)}
                   {i < arr.length - 1 && <br />}
                 </span>
               ))}

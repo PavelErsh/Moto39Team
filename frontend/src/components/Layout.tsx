@@ -11,8 +11,15 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <header className="site-header">
         <div className="container header-inner">
-          <Link to="/" className="logo">
-            <span className="logo-mark">🏍️</span>
+          <Link to="/" className="logo" aria-label="MOTO39">
+            <img
+              src="/logo.jpeg"
+              alt=""
+              className="logo-img"
+              width={40}
+              height={40}
+              decoding="async"
+            />
             <span className="logo-text">MOTO39</span>
           </Link>
 

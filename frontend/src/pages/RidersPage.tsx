@@ -99,7 +99,7 @@ export default function RidersPage() {
         <div>
           <h1 className="garage__title">Райдеры</h1>
           <p className="muted">
-            Сверху — те, кто был активен недавно. Кликни, чтобы увидеть гараж.
+            Сверху — те, кто был активен недавно. Кликни, чтобы увидеть на карте.
           </p>
         </div>
       </header>
