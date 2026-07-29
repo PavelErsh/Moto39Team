@@ -627,20 +627,7 @@ export default function MapPage() {
       <InstallPwaHint />
       <div className="map-page__head">
         <div>
-          <h1 className="map-page__title">Карта</h1>
-          <p className="map-page__sub">
-            {error
-              ? error
-              : coords
-              ? `Ваши координаты: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
-                  5,
-                )}${
-                  typeof coords.accuracy === 'number' && coords.accuracy > 0
-                    ? `  ·  точность ±${Math.round(coords.accuracy)} м`
-                    : ''
-                }  ·  на карте ${riders.length} райдер(ов)`
-              : status}
-          </p>
+          <h1 className="map-page__title">Мотокарта</h1>
         </div>
 
         {/*
