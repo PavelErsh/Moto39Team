@@ -260,7 +260,7 @@ export default function MapPage() {
   // Отдельная коллекция маркеров других райдеров: userId -> marker
   const riderMarkersRef = useRef<Map<number, any>>(new Map())
 
-  const [status, setStatus] = useState<string>('Загружаем карту…')
+  const [, setStatus] = useState<string>('Загружаем карту…')
   const [coords, setCoords] = useState<{
     lat: number
     lng: number
@@ -272,7 +272,7 @@ export default function MapPage() {
     return { lat: cached.lat, lng: cached.lng, accuracy: cached.accuracy }
   })
 
-  const [error, setError] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [riders, setRiders] = useState<UserLocation[]>([])
 
