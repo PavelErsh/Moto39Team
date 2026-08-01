@@ -14,9 +14,34 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
+    # Токен от Cloudflare Turnstile (капча). Обязателен, если на бэке
+    # включён TURNSTILE_ENABLED. Приходит с фронта из виджета.
+    turnstile_token: str | None = Field(default=None, max_length=4096)
+
+
+class EmailVerificationRequest(BaseModel):
+    """Тело запроса подтверждения регистрации кодом из письма."""
+
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=16)
+
+
+class ResendCodeRequest(BaseModel):
+    """Тело запроса повторной отправки кода."""
+
+    email: EmailStr
+
+
+class RegisterStartResponse(BaseModel):
+    """Ответ на /auth/register: код отправлен, ждём подтверждения."""
+
+    email: EmailStr
+    message: str = "На указанный email отправлен код подтверждения"
+    expires_in_minutes: int
 
 
 class UserUpdate(BaseModel):
+
     email: EmailStr | None = None
     username: str | None = Field(default=None, min_length=3, max_length=64)
     full_name: str | None = Field(default=None, max_length=255)

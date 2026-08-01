@@ -67,6 +67,32 @@ class UserCRUD:
         await db.refresh(user)
         return user
 
+    async def create_from_verified(
+        self,
+        db: AsyncSession,
+        *,
+        email: str,
+        username: str,
+        full_name: str | None,
+        hashed_password: str,
+    ) -> User:
+        """Создать пользователя с уже готовым (хешированным) паролем.
+
+        Используется на шаге подтверждения email: пароль был захеширован
+        ещё на этапе /auth/register и хранится в EmailVerificationCode.
+        """
+        user = User(
+            email=email,
+            username=username,
+            full_name=full_name,
+            hashed_password=hashed_password,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+
     async def update(
         self, db: AsyncSession, user: User, data: UserUpdate
     ) -> User:

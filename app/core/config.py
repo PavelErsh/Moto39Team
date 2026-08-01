@@ -49,9 +49,56 @@ class Settings(BaseSettings):
     # с любым портом — удобно при работе Vite (5173/5174/5175/…).
     CORS_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
+    # ---------------------------------------------------------------
+    # Верификация e-mail при регистрации
+    # ---------------------------------------------------------------
+    # Требовать ли подтверждение email кодом из письма перед созданием
+    # учётной записи. В dev-окружении можно отключить, чтобы не
+    # настраивать SMTP.
+    EMAIL_VERIFICATION_ENABLED: bool = True
+    # Длина цифрового кода подтверждения.
+    EMAIL_CODE_LENGTH: int = 6
+    # Срок жизни кода в минутах.
+    EMAIL_CODE_TTL_MINUTES: int = 15
+    # Максимум неверных попыток ввода кода до инвалидации.
+    EMAIL_CODE_MAX_ATTEMPTS: int = 5
+    # Минимальный интервал между отправками кода одному email, сек.
+    EMAIL_CODE_RESEND_INTERVAL_SECONDS: int = 60
+
+    # SMTP-настройки (Mail.ru/Yandex/Gmail/SES и т.п.).
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    # STARTTLS (обычно 587) или прямой TLS (465).
+    SMTP_USE_TLS: bool = False
+    SMTP_USE_STARTTLS: bool = True
+    # From-адрес и отображаемое имя отправителя.
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Moto39Team"
+    # Если True — не отправляем письмо реально, а печатаем код в лог.
+    # Удобно для локальной разработки без SMTP.
+    EMAIL_CONSOLE_FALLBACK: bool = True
+
+    # ---------------------------------------------------------------
+    # Cloudflare Turnstile (капча)
+    # ---------------------------------------------------------------
+    # Включить проверку капчи на регистрации.
+    TURNSTILE_ENABLED: bool = False
+    # Site key (используется на фронте; здесь только для удобства
+    # проверки/логирования).
+    TURNSTILE_SITE_KEY: str = ""
+    # Секретный ключ, которым бэкенд проверяет токен у Cloudflare.
+    TURNSTILE_SECRET_KEY: str = ""
+    # URL проверки токена.
+    TURNSTILE_VERIFY_URL: str = (
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+    )
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def _normalize_cors(cls, v: object) -> str:
+
         """Приводит любые допустимые формы к строке-CSV.
 
         Допустимые формы задания CORS_ORIGINS:

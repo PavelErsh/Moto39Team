@@ -18,6 +18,13 @@ import pytest
 # закешируется с продовым/дев значением через @lru_cache.
 _TEST_DB_PATH = pathlib.Path(__file__).resolve().parent.parent / "test.db"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB_PATH}"
+# По умолчанию в тестах выключаем внешние зависимости регистрации:
+# капчу Cloudflare и отправку email. Отдельные тесты могут при желании
+# включить их обратно через monkeypatch settings.
+os.environ.setdefault("TURNSTILE_ENABLED", "False")
+os.environ.setdefault("EMAIL_VERIFICATION_ENABLED", "False")
+os.environ.setdefault("EMAIL_CONSOLE_FALLBACK", "True")
+
 
 # Импортируем ПОСЛЕ подмены переменной окружения.
 from app.db import base_all  # noqa: E402, F401  # регистрирует модели

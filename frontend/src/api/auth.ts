@@ -17,6 +17,7 @@ export interface RegisterPayload {
   username: string
   password: string
   full_name?: string | null
+  turnstile_token?: string | null
 }
 
 export interface UpdateUserPayload {
@@ -27,8 +28,60 @@ export interface UpdateUserPayload {
   avatar_url?: string | null
 }
 
-export async function apiRegister(data: RegisterPayload): Promise<User> {
-  const res = await api.post<User>('/auth/register', data)
+export interface RegisterStartResponse {
+  email: string
+  message: string
+  expires_in_minutes: number
+}
+
+export interface AuthConfig {
+  turnstile_enabled: boolean
+  turnstile_site_key: string
+  email_verification_enabled: boolean
+  email_code_length: number
+  email_code_ttl_minutes: number
+}
+
+export async function apiAuthConfig(): Promise<AuthConfig> {
+  const res = await api.get<AuthConfig>('/auth/config')
+  return res.data
+}
+
+/**
+ * Начать регистрацию. Если верификация email включена — сервер отправит
+ * код на почту и вернёт RegisterStartResponse. Если выключена — то же
+ * тело ответа, но пользователь уже создан.
+ */
+export async function apiRegisterStart(
+  data: RegisterPayload,
+): Promise<RegisterStartResponse> {
+  const res = await api.post<RegisterStartResponse>('/auth/register', data)
+  return res.data
+}
+
+/**
+ * Подтвердить email кодом. При успехе бэкенд сразу выдаёт токены —
+ * авторизуемся и возвращаем текущего пользователя.
+ */
+export async function apiVerifyEmail(
+  email: string,
+  code: string,
+): Promise<User> {
+  const { data } = await api.post<{
+    access_token: string
+    refresh_token: string
+  }>('/auth/verify-email', { email, code })
+  tokenStorage.set(data.access_token, data.refresh_token)
+  return apiMe()
+}
+
+export async function apiResendCode(
+  email: string,
+): Promise<RegisterStartResponse> {
+  const res = await api.post<RegisterStartResponse>(
+    '/auth/resend-code',
+    { email },
+  )
   return res.data
 }
 
@@ -77,4 +130,3 @@ export async function apiDeleteAvatar(): Promise<User> {
 export function apiLogout(): void {
   tokenStorage.clear()
 }
-

@@ -12,10 +12,13 @@ import {
   apiLogin,
   apiLogout,
   apiMe,
-  apiRegister,
+  apiRegisterStart,
+  apiResendCode,
   apiUpdateMe,
   apiUploadAvatar,
+  apiVerifyEmail,
   type RegisterPayload,
+  type RegisterStartResponse,
   type UpdateUserPayload,
   type User,
 } from '../api/auth'
@@ -29,7 +32,16 @@ interface AuthContextValue {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (data: RegisterPayload) => Promise<void>
+  /**
+   * Начать регистрацию — отправить на email код подтверждения.
+   * Ничего не логинит и не сохраняет — только просит бэкенд отправить
+   * письмо. Реальное создание пользователя происходит в `verifyEmail`.
+   */
+  registerStart: (data: RegisterPayload) => Promise<RegisterStartResponse>
+  /** Подтвердить email кодом из письма и залогинить пользователя. */
+  verifyEmail: (email: string, code: string) => Promise<void>
+  /** Повторно отправить код подтверждения. */
+  resendCode: (email: string) => Promise<RegisterStartResponse>
   logout: () => void
   updateProfile: (data: UpdateUserPayload) => Promise<User>
   uploadAvatar: (file: File) => Promise<User>
@@ -81,12 +93,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me)
   }, [])
 
-  const register = useCallback(
-    async (data: RegisterPayload) => {
-      await apiRegister(data)
-      await login(data.username, data.password)
-    },
-    [login],
+  const registerStart = useCallback(
+    async (data: RegisterPayload) => apiRegisterStart(data),
+    [],
+  )
+
+  const verifyEmail = useCallback(async (email: string, code: string) => {
+    const me = await apiVerifyEmail(email, code)
+    setUser(me)
+  }, [])
+
+  const resendCode = useCallback(
+    async (email: string) => apiResendCode(email),
+    [],
   )
 
   const logout = useCallback(() => {
@@ -120,7 +139,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       login,
-      register,
+      registerStart,
+      verifyEmail,
+      resendCode,
       logout,
       updateProfile,
       uploadAvatar,
@@ -131,7 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       login,
-      register,
+      registerStart,
+      verifyEmail,
+      resendCode,
       logout,
       updateProfile,
       uploadAvatar,
