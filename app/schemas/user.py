@@ -54,8 +54,20 @@ class UserLogin(BaseModel):
     password: str
 
 
-class UserRead(UserBase):
+class UserRead(BaseModel):
+    """Данные текущего пользователя (эндпоинт /auth/me и т.п.).
+
+    Здесь ``email`` и ``username`` — Optional, чтобы схема оставалась
+    валидной для старых учёток, у которых в БД email/username могут быть
+    NULL (последствие ручного создания таблицы users до появления
+    актуальных миграций). Для новых регистраций эти поля всегда
+    заполнены.
+    """
+
     id: int
+    email: EmailStr | None = None
+    username: str | None = None
+    full_name: str | None = None
     is_active: bool
     is_superuser: bool
     avatar_url: str | None = None
@@ -63,6 +75,7 @@ class UserRead(UserBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class UserPublic(BaseModel):
