@@ -1,10 +1,11 @@
 """email verification codes table
 
 Revision ID: b8c9d0e1f2a3
-Revises: a7b8c9d0e1f2
+Revises: d0e1f2a3b4c5
 Create Date: 2026-08-01 00:00:00.000000
 
 """
+
 from __future__ import annotations
 
 from typing import Sequence, Union
@@ -15,7 +16,8 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "b8c9d0e1f2a3"
-down_revision: Union[str, None] = "a7b8c9d0e1f2"
+down_revision: Union[str, None] = "d0e1f2a3b4c5"
+
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
