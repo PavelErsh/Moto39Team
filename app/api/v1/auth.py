@@ -1,9 +1,11 @@
 """Роуты авторизации: регистрация, подтверждение email, логин, /me."""
+import logging
 from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+
 
 from app.api.deps import CurrentActiveUser, DbSession
 from app.core.config import settings
@@ -27,10 +29,13 @@ from app.schemas.user import (
 from app.services.email import generate_code, send_verification_code
 from app.services.turnstile import verify_turnstile_token
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
 def _client_ip(request: Request) -> str | None:
+
     """Извлечь IP клиента (учитывая X-Forwarded-For от nginx)."""
     xff = request.headers.get("x-forwarded-for")
     if xff:
@@ -140,13 +145,30 @@ async def register(
         code=code,
     )
 
-    # 6. Отправляем письмо (в dev может печатать в лог).
-    await send_verification_code(data.email, code)
+    # 6. Отправляем письмо (в dev может печатать в лог). Если SMTP
+    # не сконфигурирован и fallback выключен — не отдаём 500 наружу,
+    # а откатываем черновик и возвращаем 503 с понятной причиной.
+    try:
+        await send_verification_code(data.email, code)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Не удалось отправить письмо с кодом на %s", data.email
+        )
+        await email_verification_crud.delete_by_email(db, data.email)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Не удалось отправить письмо с кодом подтверждения. "
+                "Проверьте настройки почты на сервере или повторите "
+                "попытку позже."
+            ),
+        ) from exc
 
     return RegisterStartResponse(
         email=data.email,
         expires_in_minutes=settings.EMAIL_CODE_TTL_MINUTES,
     )
+
 
 
 @router.post(
