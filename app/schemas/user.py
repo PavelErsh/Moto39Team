@@ -73,8 +73,15 @@ class UserRead(BaseModel):
     avatar_url: str | None = None
     created_at: datetime
     updated_at: datetime
+    # Текущий экстренный статус пользователя (None / "help" / "sos").
+    # Возвращается в /auth/me, чтобы фронт мог отрисовать «свой» маркер
+    # с нужным цветом и подписью, а также скрыть повторное открытие
+    # диалога подтверждения, пока статус уже активен.
+    emergency_status: str | None = None
+    emergency_status_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 

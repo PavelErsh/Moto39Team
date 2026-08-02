@@ -21,6 +21,46 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 HEIC_EXTENSIONS = {".heic", ".heif"}
 MAX_IMAGE_SIZE = 16 * 1024 * 1024  # 16 MB
 
+# Маппинг MIME → расширение. Используется, если браузер прислал файл
+# без расширения в имени (частая ситуация: снимок с мобильной камеры,
+# `Blob` из canvas, drag-and-drop из мессенджера и т.п.). Без этого
+# fallback-а сервер отвечал 400 «Неподдерживаемый формат», хотя файл
+# на самом деле корректный JPEG/PNG.
+_MIME_TO_EXT: dict[str, str] = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/x-png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
+_MIME_HEIC = {
+    "image/heic",
+    "image/heif",
+    "image/heic-sequence",
+    "image/heif-sequence",
+}
+
+
+def _detect_extension(file: UploadFile) -> str:
+    """Определить расширение файла.
+
+    Порядок:
+    1. Явное расширение из ``filename`` (если валидное).
+    2. MIME-тип, присланный браузером (Content-Type).
+    """
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext:
+        return ext
+    mime = (file.content_type or "").lower().strip()
+    if mime in _MIME_HEIC:
+        return ".heic"
+    if mime in _MIME_TO_EXT:
+        return _MIME_TO_EXT[mime]
+    return ""
+
 
 async def save_uploaded_image(file: UploadFile, subdir: str) -> str:
     """Сохранить загруженное изображение и вернуть относительный URL.
@@ -29,8 +69,7 @@ async def save_uploaded_image(file: UploadFile, subdir: str) -> str:
     :param subdir: подкаталог внутри ``UPLOAD_DIR`` (например, ``"avatars"``).
     :return: URL вида ``"/media/<subdir>/<name>"``.
     """
-    filename = file.filename or ""
-    ext = Path(filename).suffix.lower()
+    ext = _detect_extension(file)
     if ext in HEIC_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

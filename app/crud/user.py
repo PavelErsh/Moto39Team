@@ -172,8 +172,43 @@ class UserCRUD:
         атрибуты вне greenlet-контекста и упала бы с MissingGreenlet.
         Значение ``last_seen_at`` мы аккуратно проставляем в памяти
         объекта прямо здесь.
+
+        Дополнительно эта же функция проверяет, не истёк ли активный
+        экстренный статус пользователя (sos > 1ч, help > 2ч). Если истёк —
+        сбрасывает его в БД и в памяти, чтобы даже без опроса карты
+        (например, у пользователя ни разу не открывалась /map после нажатия
+        SOS) статус самопроизвольно вернулся к обычному.
         """
         now = datetime.now(timezone.utc)
+
+        # 1. Авто-сброс просроченного emergency_status. Делаем это ДО
+        #    ранних return-ов по частоте: sos-статус может «протухнуть»
+        #    буквально через пару минут после захода в приложение —
+        #    сброс не должен ждать следующего окна touch_last_seen.
+        if user.emergency_status and user.emergency_status_at:
+            started = user.emergency_status_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            timeout = timedelta(
+                hours=1 if user.emergency_status == "sos" else 2
+            )
+            if now - started > timeout:
+                try:
+                    await db.execute(
+                        update(User)
+                        .where(User.id == user.id)
+                        .values(
+                            emergency_status=None,
+                            emergency_status_at=None,
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                    await db.commit()
+                    user.emergency_status = None
+                    user.emergency_status_at = None
+                except Exception:  # noqa: BLE001
+                    await db.rollback()
+
         last = user.last_seen_at
         if last is not None:
             # SQLite мог сохранить naive-datetime — приводим к aware.
@@ -197,6 +232,7 @@ class UserCRUD:
             # прошёл (например, транзакция занята вложенной операцией).
             # На следующем запросе снова попробуем.
             await db.rollback()
+
 
     async def list_with_location(
         self, db: AsyncSession, max_age_minutes: int | None = None

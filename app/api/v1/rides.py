@@ -3,23 +3,15 @@
 Просмотр списка/детали — доступен всем (включая неавторизованных).
 Создание/редактирование/удаление/загрузка изображений — только для админов.
 """
-import secrets
-from pathlib import Path
-
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentSuperuser, DbSession
-from app.core.config import settings
+from app.api.v1._uploads import save_uploaded_image
 from app.crud.ride import ride_crud
 from app.schemas.reference import ImageUploadResponse
 from app.schemas.ride import RideCreate, RideRead, RideUpdate
 
 router = APIRouter()
-
-
-ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-HEIC_EXTENSIONS = {".heic", ".heif"}
-MAX_IMAGE_SIZE = 16 * 1024 * 1024  # 16 MB
 
 
 @router.get(
@@ -112,47 +104,5 @@ async def upload_ride_image(
     _: CurrentSuperuser,
     file: UploadFile = File(...),
 ) -> ImageUploadResponse:
-    filename = file.filename or ""
-    ext = Path(filename).suffix.lower()
-    if ext in HEIC_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Формат HEIC/HEIF не поддерживается. На iPhone включите "
-                "«Настройки → Камера → Форматы → Наиболее совместимый», "
-                "либо выберите фото и сохраните его как JPEG."
-            ),
-        )
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Неподдерживаемый формат. Разрешены: "
-                + ", ".join(sorted(ALLOWED_IMAGE_EXTENSIONS))
-            ),
-        )
-
-    data = await file.read(MAX_IMAGE_SIZE + 1)
-    if len(data) > MAX_IMAGE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=(
-                f"Файл слишком большой (максимум "
-                f"{MAX_IMAGE_SIZE // (1024 * 1024)} МБ)"
-            ),
-        )
-    if not data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Файл пуст",
-        )
-
-    upload_dir = Path(settings.UPLOAD_DIR) / "rides"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    unique_name = f"{secrets.token_urlsafe(16)}{ext}"
-    dest = upload_dir / unique_name
-    dest.write_bytes(data)
-
-    url = f"/media/rides/{unique_name}"
+    url = await save_uploaded_image(file, "rides")
     return ImageUploadResponse(url=url)
