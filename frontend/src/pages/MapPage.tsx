@@ -285,6 +285,16 @@ export default function MapPage() {
         ? 'sos'
         : null
 
+  // Ref для актуального значения myEmergency — используется внутри
+  // callback'а applyFix, у которого иначе будет stale closure на
+  // первоначальное значение из момента подписки. Без этого ref после
+  // нажатия SOS/HELP при следующем GPS-фиксе маркер перекрашивался
+  // бы обратно в обычный стиль.
+  const myEmergencyRef = useRef<'help' | 'sos' | null>(myEmergency)
+  useEffect(() => {
+    myEmergencyRef.current = myEmergency
+  }, [myEmergency])
+
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const meMarkerRef = useRef<any>(null)
@@ -431,18 +441,24 @@ export default function MapPage() {
       // Радиус погрешности рисуем, только если ОС его сообщила.
       const radius = typeof accuracy === 'number' && accuracy > 0 ? accuracy : 0
 
-      // Стиль собственной метки зависит от активного emergency-статуса:
-      //   help → жёлтая с подписью HELP,
-      //   sos  → красная с подписью SOS,
-      //   иначе → обычный «я» (красная с белой обводкой).
+      // Стиль собственной метки зависит от активного emergency-статуса.
+      // Читаем через ref, а НЕ из замыкания (иначе после нажатия
+      // SOS/HELP при следующем GPS-фиксе метка перекрасится обратно
+      // в обычный «Вы здесь», т.к. подписка была создана с прошлым
+      // значением myEmergency).
+      const emergencyNow = myEmergencyRef.current
       const myStyle: MarkerStyle =
-        myEmergency === 'sos'
+        emergencyNow === 'sos'
           ? STYLE_SOS
-          : myEmergency === 'help'
+          : emergencyNow === 'help'
             ? STYLE_HELP
             : STYLE_ME
       const myBadge =
-        myEmergency === 'sos' ? 'SOS' : myEmergency === 'help' ? 'HELP' : null
+        emergencyNow === 'sos'
+          ? 'SOS'
+          : emergencyNow === 'help'
+            ? 'HELP'
+            : null
       const myTooltip = myBadge ? `${myBadge} · Вы здесь` : 'Вы здесь'
 
       if (USE_YANDEX) {

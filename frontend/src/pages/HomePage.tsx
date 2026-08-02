@@ -166,6 +166,30 @@ export default function HomePage() {
     }
   }
 
+  // Активный экстренный статус текущего пользователя — по нему
+  // показываем поверх пейджера видимую плашку «SOS/HELP активен».
+  // Так пользователь сразу видит, что его сигнал сохранён (и на карте
+  // его метка изменит цвет), плюс есть возможность отменить статус.
+  const activeEmergency: 'help' | 'sos' | null =
+    user.emergency_status === 'help'
+      ? 'help'
+      : user.emergency_status === 'sos'
+        ? 'sos'
+        : null
+
+  const cancelEmergency = async () => {
+    try {
+      await apiUpdateEmergencyStatus(null)
+      try {
+        await refreshUser()
+      } catch {
+        /* noop */
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
 
   // Кнопка "Выход" — logout авторизованного пользователя.
   const handleExit = () => {
@@ -179,6 +203,34 @@ export default function HomePage() {
 
   return (
     <div className="pager-bg">
+      {/* Плашка активного экстренного статуса — сразу видно, что сигнал
+          сохранён на сервере, и можно быстро отменить его. */}
+      {activeEmergency && (
+        <div
+          className={`pager-emergency pager-emergency--${activeEmergency}`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="pager-emergency__title">
+            {activeEmergency === 'sos' ? '🚨 SOS активен' : '⚠️ HELP активен'}
+          </div>
+          <div className="pager-emergency__text">
+            Ваша метка на карте отображается для других райдеров.
+            <br />
+            <Link to="/map" className="pager-emergency__link">
+              Открыть карту →
+            </Link>
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost pager-emergency__cancel"
+            onClick={cancelEmergency}
+          >
+            Отменить статус
+          </button>
+        </div>
+      )}
+
       <div className="pager-bg__inner">
         {/* Сам пейджер — img, чтобы браузер держал соотношение сторон. */}
         <img
