@@ -10,6 +10,8 @@ import {
   type LocationFix,
 } from '../services/backgroundLocation'
 import InstallPwaHint from '../components/InstallPwaHint'
+import { useAuth } from '../context/AuthContext'
+
 
 // Калининград — центр по умолчанию
 const DEFAULT_CENTER: [number, number] = [54.7104, 20.4522]
@@ -239,18 +241,23 @@ const STYLE_ME: MarkerStyle = {
 
 // Стили для экстренных статусов (SOS / HELP) — переопределяют обычную
 // раскраску по свежести координат, чтобы выделить райдера на карте.
+// Для Яндекс.Карт используем «stretchy»-пресеты: их корпус
+// автоматически расширяется под iconContent, поэтому крупный текст
+// «SOS» / «HELP» виден прямо на метке БЕЗ необходимости наводить курсор
+// или открывать балун.
 const STYLE_HELP: MarkerStyle = {
   border: '#ca8a04',
   fill: '#facc15',
-  yandexPreset: 'islands#yellowCircleDotIcon',
+  yandexPreset: 'islands#yellowStretchyIcon',
   yandexIconColor: '#facc15',
 }
 const STYLE_SOS: MarkerStyle = {
   border: '#b91c1c',
   fill: '#ef4444',
-  yandexPreset: 'islands#redCircleDotIcon',
+  yandexPreset: 'islands#redStretchyIcon',
   yandexIconColor: '#ef4444',
 }
+
 
 function styleForRider(lastSeenIso: string): MarkerStyle {
   const diffMin =
@@ -266,11 +273,24 @@ function styleForRider(lastSeenIso: string): MarkerStyle {
 /* ------------------------------ Компонент ------------------------------ */
 
 export default function MapPage() {
+  const { user } = useAuth()
+  // Собственный экстренный статус: перекрашивает мой маркер в цвет
+  // соответствующей категории (SOS — красный, HELP — жёлтый) и
+  // показывает постоянную подпись над меткой, чтобы автор точно видел,
+  // что его сигнал зафиксирован.
+  const myEmergency: 'help' | 'sos' | null =
+    user?.emergency_status === 'help'
+      ? 'help'
+      : user?.emergency_status === 'sos'
+        ? 'sos'
+        : null
+
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const meMarkerRef = useRef<any>(null)
   const accuracyCircleRef = useRef<any>(null)
   const firstFixAppliedRef = useRef(false)
+
 
   // Отдельная коллекция маркеров других райдеров: userId -> marker
   const riderMarkersRef = useRef<Map<number, any>>(new Map())
@@ -411,6 +431,20 @@ export default function MapPage() {
       // Радиус погрешности рисуем, только если ОС его сообщила.
       const radius = typeof accuracy === 'number' && accuracy > 0 ? accuracy : 0
 
+      // Стиль собственной метки зависит от активного emergency-статуса:
+      //   help → жёлтая с подписью HELP,
+      //   sos  → красная с подписью SOS,
+      //   иначе → обычный «я» (красная с белой обводкой).
+      const myStyle: MarkerStyle =
+        myEmergency === 'sos'
+          ? STYLE_SOS
+          : myEmergency === 'help'
+            ? STYLE_HELP
+            : STYLE_ME
+      const myBadge =
+        myEmergency === 'sos' ? 'SOS' : myEmergency === 'help' ? 'HELP' : null
+      const myTooltip = myBadge ? `${myBadge} · Вы здесь` : 'Вы здесь'
+
       if (USE_YANDEX) {
         const ymaps = window.ymaps
         if (!ymaps) return
@@ -418,15 +452,28 @@ export default function MapPage() {
         if (!meMarkerRef.current) {
           meMarkerRef.current = new ymaps.Placemark(
             point,
-            { balloonContent: 'Вы здесь', hintContent: 'Вы здесь' },
             {
-              preset: STYLE_ME.yandexPreset,
-              iconColor: STYLE_ME.yandexIconColor,
+              balloonContent: myTooltip,
+              hintContent: myTooltip,
+              iconContent: myBadge || undefined,
+            },
+            {
+              preset: myStyle.yandexPreset,
+              iconColor: myStyle.yandexIconColor,
             },
           )
           map.geoObjects.add(meMarkerRef.current)
         } else {
           meMarkerRef.current.geometry.setCoordinates(point)
+          meMarkerRef.current.properties.set({
+            balloonContent: myTooltip,
+            hintContent: myTooltip,
+            iconContent: myBadge || undefined,
+          })
+          meMarkerRef.current.options.set({
+            preset: myStyle.yandexPreset,
+            iconColor: myStyle.yandexIconColor,
+          })
         }
 
         if (radius > 0) {
@@ -435,8 +482,8 @@ export default function MapPage() {
               [point, radius],
               {},
               {
-                fillColor: `${STYLE_ME.fill}22`,
-                strokeColor: STYLE_ME.fill,
+                fillColor: `${myStyle.fill}22`,
+                strokeColor: myStyle.fill,
                 strokeOpacity: 0.7,
                 strokeWidth: 1,
               },
@@ -445,6 +492,10 @@ export default function MapPage() {
           } else {
             accuracyCircleRef.current.geometry.setCoordinates(point)
             accuracyCircleRef.current.geometry.setRadius(radius)
+            accuracyCircleRef.current.options.set({
+              fillColor: `${myStyle.fill}22`,
+              strokeColor: myStyle.fill,
+            })
           }
         }
 
@@ -456,36 +507,74 @@ export default function MapPage() {
         const L = window.L
         if (!L) return
 
+        const meOpts = {
+          radius: 8,
+          color: myStyle.border,
+          weight: 3,
+          fillColor: myStyle.fill,
+          fillOpacity: 1,
+        }
+
         if (!meMarkerRef.current) {
-          // По ТЗ: «Пользователь — красная с белыми краями».
-          // Используем более крупный маркер с толстой белой обводкой,
-          // чтобы визуально выделять собственную позицию среди чужих.
-          meMarkerRef.current = L.circleMarker(point, {
-            radius: 8,
-            color: STYLE_ME.border,
-            weight: 3,
-            fillColor: STYLE_ME.fill,
-            fillOpacity: 1,
-          })
-            .addTo(map)
-            .bindTooltip('Вы здесь', { direction: 'top', offset: [0, -6] })
+          // По ТЗ: собственный маркер — красный с белой обводкой в обычном
+          // режиме. При активном SOS/HELP перекрашиваем в цвет статуса
+          // и показываем постоянную подпись над меткой.
+          meMarkerRef.current = L.circleMarker(point, meOpts).addTo(map)
+          if (myBadge) {
+            meMarkerRef.current.bindTooltip(myTooltip, {
+              direction: 'top',
+              offset: [0, -8],
+              permanent: true,
+              className: 'map-emergency-badge',
+            })
+          } else {
+            meMarkerRef.current.bindTooltip(myTooltip, {
+              direction: 'top',
+              offset: [0, -6],
+            })
+          }
         } else {
           meMarkerRef.current.setLatLng(point)
+          meMarkerRef.current.setStyle(meOpts)
+          // Полностью пересобираем tooltip, т.к. permanent-режим
+          // приходится менять при смене статуса.
+          try {
+            meMarkerRef.current.unbindTooltip()
+          } catch {
+            /* noop */
+          }
+          if (myBadge) {
+            meMarkerRef.current.bindTooltip(myTooltip, {
+              direction: 'top',
+              offset: [0, -8],
+              permanent: true,
+              className: 'map-emergency-badge',
+            })
+          } else {
+            meMarkerRef.current.bindTooltip(myTooltip, {
+              direction: 'top',
+              offset: [0, -6],
+            })
+          }
         }
 
         if (radius > 0) {
           if (!accuracyCircleRef.current) {
             accuracyCircleRef.current = L.circle(point, {
               radius,
-              color: STYLE_ME.fill,
+              color: myStyle.fill,
               weight: 1,
               opacity: 0.7,
-              fillColor: STYLE_ME.fill,
+              fillColor: myStyle.fill,
               fillOpacity: 0.13,
             }).addTo(map)
           } else {
             accuracyCircleRef.current.setLatLng(point)
             accuracyCircleRef.current.setRadius(radius)
+            accuracyCircleRef.current.setStyle({
+              color: myStyle.fill,
+              fillColor: myStyle.fill,
+            })
           }
         }
 
@@ -498,13 +587,102 @@ export default function MapPage() {
       }
     }
 
+
     setStatus('Ждём GPS…')
     const unsubscribe = subscribeLocation(applyFix)
 
     return () => {
       unsubscribe()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
+
+  // При смене собственного emergency-статуса — мгновенно перекрашиваем
+  // уже отрисованный собственный маркер и его circle погрешности, не
+  // дожидаясь следующего GPS-фикса. Иначе после нажатия SOS/HELP пользователь
+  // видел бы обновление цвета только через полминуты (когда придёт fix).
+  useEffect(() => {
+    if (!ready) return
+    const map = mapRef.current
+    const meMarker = meMarkerRef.current
+    if (!map || !meMarker) return
+
+    const myStyle: MarkerStyle =
+      myEmergency === 'sos'
+        ? STYLE_SOS
+        : myEmergency === 'help'
+          ? STYLE_HELP
+          : STYLE_ME
+    const myBadge =
+      myEmergency === 'sos' ? 'SOS' : myEmergency === 'help' ? 'HELP' : null
+    const myTooltip = myBadge ? `${myBadge} · Вы здесь` : 'Вы здесь'
+
+    if (USE_YANDEX) {
+      try {
+        meMarker.properties.set({
+          balloonContent: myTooltip,
+          hintContent: myTooltip,
+          iconContent: myBadge || undefined,
+        })
+        meMarker.options.set({
+          preset: myStyle.yandexPreset,
+          iconColor: myStyle.yandexIconColor,
+        })
+      } catch {
+        /* noop */
+      }
+      if (accuracyCircleRef.current) {
+        try {
+          accuracyCircleRef.current.options.set({
+            fillColor: `${myStyle.fill}22`,
+            strokeColor: myStyle.fill,
+          })
+        } catch {
+          /* noop */
+        }
+      }
+    } else {
+      try {
+        meMarker.setStyle({
+          color: myStyle.border,
+          fillColor: myStyle.fill,
+          weight: 3,
+          fillOpacity: 1,
+        })
+        try {
+          meMarker.unbindTooltip()
+        } catch {
+          /* noop */
+        }
+        if (myBadge) {
+          meMarker.bindTooltip(myTooltip, {
+            direction: 'top',
+            offset: [0, -8],
+            permanent: true,
+            className: 'map-emergency-badge',
+          })
+        } else {
+          meMarker.bindTooltip(myTooltip, {
+            direction: 'top',
+            offset: [0, -6],
+          })
+        }
+      } catch {
+        /* noop */
+      }
+      if (accuracyCircleRef.current) {
+        try {
+          accuracyCircleRef.current.setStyle({
+            color: myStyle.fill,
+            fillColor: myStyle.fill,
+          })
+        } catch {
+          /* noop */
+        }
+      }
+    }
+  }, [myEmergency, ready])
+
 
   // Периодически подгружаем последние координаты других райдеров
   useEffect(() => {
@@ -626,17 +804,51 @@ export default function MapPage() {
           fillOpacity: style === STYLE_STALE ? 1 : 0.85,
         }
         if (!existing) {
-          const marker = L.circleMarker(point, leafletOpts)
-            .addTo(map)
-            .bindTooltip(label, { direction: 'top', offset: [0, -6] })
-            .bindPopup(label)
+          const marker = L.circleMarker(point, leafletOpts).addTo(map)
+          // Экстренные метки получают постоянный «badge» с крупной
+          // подписью SOS/HELP над точкой — так на карте сразу видно,
+          // кому нужна помощь, без необходимости наводить курсор.
+          if (badge) {
+            marker.bindTooltip(badge, {
+              direction: 'top',
+              offset: [0, -8],
+              permanent: true,
+              className: `map-emergency-badge map-emergency-badge--${badge.toLowerCase()}`,
+            })
+          } else {
+            marker.bindTooltip(label, {
+              direction: 'top',
+              offset: [0, -6],
+            })
+          }
+          marker.bindPopup(label)
           markers.set(r.id, marker)
         } else {
           existing.setLatLng(point)
           existing.setStyle(leafletOpts)
-          existing.setTooltipContent(label)
+          // Пересобираем tooltip: тип (permanent / hover) мог смениться,
+          // если у райдера сменился emergency_status между опросами.
+          try {
+            existing.unbindTooltip()
+          } catch {
+            /* noop */
+          }
+          if (badge) {
+            existing.bindTooltip(badge, {
+              direction: 'top',
+              offset: [0, -8],
+              permanent: true,
+              className: `map-emergency-badge map-emergency-badge--${badge.toLowerCase()}`,
+            })
+          } else {
+            existing.bindTooltip(label, {
+              direction: 'top',
+              offset: [0, -6],
+            })
+          }
           existing.setPopupContent(label)
         }
+
       }
     }
   }, [riders, ready])

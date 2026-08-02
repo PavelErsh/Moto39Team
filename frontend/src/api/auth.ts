@@ -10,7 +10,14 @@ export interface User {
   is_superuser: boolean
   created_at: string
   updated_at: string
+  // Экстренный статус пользователя. `null` — обычный, `"help"` — жёлтая
+  // подпись HELP на карте (сброс через 2 часа), `"sos"` — красная SOS
+  // (сброс через 1 час). Сброс выполняется на бэке; фронт лишь
+  // подтягивает актуальное значение и раскрашивает собственный маркер.
+  emergency_status?: 'help' | 'sos' | null
+  emergency_status_at?: string | null
 }
+
 
 export interface RegisterPayload {
   email: string

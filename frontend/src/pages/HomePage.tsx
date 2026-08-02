@@ -86,8 +86,9 @@ const HITS: Record<string, Hit> = {
 /* eslint-enable no-multi-spaces */
 
 export default function HomePage() {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
+
 
   // Гостевая версия — экран приветствия с приглашением войти/вступить.
   // «Прибор-пейджер» показывается ТОЛЬКО авторизованным пользователям.
@@ -149,12 +150,22 @@ export default function HomePage() {
     if (confirmed) {
       try {
         await apiUpdateEmergencyStatus(type)
+        // Немедленно перечитываем профиль, чтобы собственный маркер на
+        // карте перекрасился в соответствующий цвет ещё до следующего
+        // опроса /users/locations (иначе пользователь не увидит, что
+        // его статус изменился).
+        try {
+          await refreshUser()
+        } catch {
+          /* noop — не блокируем открытие чата ошибкой обновления */
+        }
       } catch {
         // Тихо игнорируем — главное открыть чат
       }
       window.open(TG_SOS_URL, '_blank', 'noopener,noreferrer')
     }
   }
+
 
   // Кнопка "Выход" — logout авторизованного пользователя.
   const handleExit = () => {
