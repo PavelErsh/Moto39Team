@@ -558,6 +558,13 @@ export default function MapPage() {
     for (const r of riders) {
       const point: [number, number] = [r.lat, r.lng]
       const title = r.full_name || r.username
+      // Подпись для экстренных статусов
+      const badge =
+        r.emergency_status === 'help'
+          ? 'HELP'
+          : r.emergency_status === 'sos'
+            ? 'SOS'
+            : null
       const label = (badge ? `[${badge}] ` : '') + `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
       // Цвет метки зависит от времени последнего обновления координат.
       // Экстренные статусы (help/sos) переопределяют стандартную раскраску.
@@ -569,13 +576,6 @@ export default function MapPage() {
       } else {
         style = styleForRider(r.last_seen_at)
       }
-      // Подпись для экстренных статусов
-      const badge =
-        r.emergency_status === 'help'
-          ? 'HELP'
-          : r.emergency_status === 'sos'
-            ? 'SOS'
-            : null
 
       const existing = markers.get(r.id)
 
