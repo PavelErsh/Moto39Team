@@ -125,6 +125,28 @@ class UserCRUD:
         await db.refresh(user)
         return user
 
+    async def update_emergency_status(
+        self,
+        db: AsyncSession,
+        user: User,
+        status: str | None,
+    ) -> User:
+        """Установить или сбросить (None) экстренный статус пользователя.
+
+        При установке статуса записывает ``emergency_status_at``.
+        Таймауты авто-сброса:
+          • sos  — 1 час,
+          • help — 2 часа.
+        """
+        user.emergency_status = status
+        user.emergency_status_at = (
+            datetime.now(timezone.utc) if status else None
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
     async def touch_last_seen(
         self,
         db: AsyncSession,
@@ -182,6 +204,7 @@ class UserCRUD:
         """Список пользователей, у которых есть последние координаты.
 
         Если задан max_age_minutes — отфильтровать по свежести.
+        Попутно сбрасывает просроченные emergency_status (sos > 1ч, help > 2ч).
         """
         stmt = (
             select(User)
@@ -199,7 +222,25 @@ class UserCRUD:
             )
             stmt = stmt.where(User.last_seen_at >= cutoff)
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        users = list(result.scalars().all())
+
+        # Авто-сброс просроченных экстренных статусов при каждом опросе карты.
+        now = datetime.now(timezone.utc)
+        expired: list[User] = []
+        for u in users:
+            if u.emergency_status and u.emergency_status_at:
+                timeout = timedelta(
+                    hours=1 if u.emergency_status == 'sos' else 2
+                )
+                if now - u.emergency_status_at > timeout:
+                    u.emergency_status = None
+                    u.emergency_status_at = None
+                    expired.append(u)
+        if expired:
+            db.add_all(expired)
+            await db.commit()
+
+        return users
 
     async def authenticate(
         self, db: AsyncSession, username: str, password: str

@@ -107,6 +107,7 @@ export interface UserLocation {
   lng: number
   accuracy: number | null
   last_seen_at: string
+  emergency_status: string | null
 }
 
 export async function apiUpdateMyLocation(payload: {
@@ -115,6 +116,16 @@ export async function apiUpdateMyLocation(payload: {
   accuracy?: number | null
 }): Promise<UserLocation> {
   const res = await api.post<UserLocation>('/users/me/location', payload)
+  return res.data
+}
+
+export async function apiUpdateEmergencyStatus(
+  emergency_status: string | null,
+): Promise<UserLocation> {
+  // null — сброс статуса (белая метка), help — жёлтая, sos — красная
+  const res = await api.post<UserLocation>('/users/me/emergency', {
+    emergency_status: emergency_status ?? '',
+  })
   return res.data
 }
 

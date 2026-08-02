@@ -104,6 +104,14 @@ class LocationUpdate(BaseModel):
     accuracy: float | None = Field(default=None, ge=0, le=100000)
 
 
+class EmergencyStatusUpdate(BaseModel):
+    """Запрос на установку/сброс экстренного статуса."""
+
+    emergency_status: str | None = Field(
+        default=None, pattern=r"^(help|sos|)$"
+    )
+
+
 class UserLocation(BaseModel):
     """Публичная последняя позиция пользователя."""
 
@@ -115,5 +123,6 @@ class UserLocation(BaseModel):
     lng: float
     accuracy: float | None = None
     last_seen_at: datetime
+    emergency_status: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

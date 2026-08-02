@@ -51,6 +51,18 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Статус экстренной ситуации: None — обычный, "help" — нужна помощь,
+    # "sos" — срочный вызов. Отображается на карте особым маркером.
+    emergency_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, default=None
+    )
+    # Время установки emergency_status. Используется для авто-сброса:
+    #   sos  → 1 час,
+    #   help → 2 часа.
+    emergency_status_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
     motorcycles: Mapped[list["Motorcycle"]] = relationship(
         "Motorcycle",
         back_populates="owner",

@@ -6,6 +6,7 @@ from app.api.v1._uploads import save_uploaded_image
 from app.crud.user import user_crud
 from app.schemas.reference import ImageUploadResponse
 from app.schemas.user import (
+    EmergencyStatusUpdate,
     LocationUpdate,
     UserLocation,
     UserPublic,
@@ -26,6 +27,7 @@ def _to_location(user) -> UserLocation:
         lng=user.last_lng,
         accuracy=user.last_accuracy,
         last_seen_at=user.last_seen_at,
+        emergency_status=user.emergency_status,
     )
 
 
@@ -131,6 +133,23 @@ async def update_my_location(
     user = await user_crud.update_location(
         db, current_user, data.lat, data.lng, data.accuracy
     )
+    return _to_location(user)
+
+
+@router.post(
+    "/me/emergency",
+    response_model=UserLocation,
+    summary="Установить или сбросить экстренный статус (help/sos)",
+)
+async def update_emergency_status(
+    data: EmergencyStatusUpdate,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+) -> UserLocation:
+    """Статус ``help`` или ``sos`` меняет вид маркера на карте для других."""
+    # Пустая строка означает сброс статуса — приводим к None.
+    status = data.emergency_status.strip() if data.emergency_status else None
+    user = await user_crud.update_emergency_status(db, current_user, status)
     return _to_location(user)
 
 

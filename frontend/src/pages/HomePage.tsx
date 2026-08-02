@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { apiUpdateEmergencyStatus } from '../api/motorcycles'
 
 /**
  * Стартовая страница — «мото-пейджер».
@@ -18,10 +19,10 @@ import { useAuth } from '../context/AuthContext'
  *   • Шестерёнка (правый верхний угол экрана) — настройки (кабинет/админка)
  *   • МОТОКАРТА — карта с пользователями (/map)
  *   • ДОНАТ — справка «Донат»
- *   • Я КАТАЮ — раздел в разработке
+ *   • Я КАТАЮ — Telegram-чат moto39 (конкретный пост)
  *   • SOS — Telegram-чат moto39
  *   • ВЫХОД — logout
- *   • HELP — Telegram-чат moto39
+ *   • HELP — конкретный пост Telegram (тот же, что и SOS)
  *   • ГАРАЖ — мотоциклы пользователя (/moto)
  *   • РАЙДЕРЫ — все пользователи (/riders)
  *   • МОТОКАЛЕНДАРЬ — календарь событий (/calendar)
@@ -33,6 +34,12 @@ import { useAuth } from '../context/AuthContext'
 
 // URL telegram-чата, на который ведут кнопки SOS / HELP / ОБЩИЙ ЧАТ.
 const TG_CHAT_URL = 'https://t.me/mkld39'
+
+// URL конкретного поста в telegram-чате для кнопки «Я КАТАЮ».
+const TG_YA_KATAYU_URL = 'https://t.me/mkld39/1612'
+
+// URL для кнопки SOS.
+const TG_SOS_URL = 'https://t.me/mkld39/1611'
 
 // Хиты — прямоугольники в процентах от размеров картинки-подложки.
 // Значения подобраны по референсу `/pager.jpeg`.
@@ -124,6 +131,31 @@ export default function HomePage() {
     window.open(TG_CHAT_URL, '_blank', 'noopener,noreferrer')
   }
 
+  // Открыть конкретный пост «Я КАТАЮ» в telegram-чате.
+  const openYaKatayu = () => {
+    window.open(TG_YA_KATAYU_URL, '_blank', 'noopener,noreferrer')
+  }
+
+  // Открыть пост SOS/HELP — с подтверждением, что ситуация срочная.
+  // После подтверждения устанавливает emergency_status на бэке (меняет
+  // вид маркера на карте: help → жёлтая точка, sos → красная точка).
+  const openSosHelp = async (type: 'help' | 'sos') => {
+    const confirmed = window.confirm(
+      '⚠️ Эти кнопки для чрезвычайных ситуаций.\n' +
+      'В случае отправки ложных сообщений к вам могут быть применены меры вплоть до блокировки.\n\n' +
+      'Нажмите «ОК» — если ситуация срочная,\n' +
+      '«Отмена» — если нажали случайно.',
+    )
+    if (confirmed) {
+      try {
+        await apiUpdateEmergencyStatus(type)
+      } catch {
+        // Тихо игнорируем — главное открыть чат
+      }
+      window.open(TG_SOS_URL, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   // Кнопка "Выход" — logout авторизованного пользователя.
   const handleExit = () => {
     logout()
@@ -195,21 +227,22 @@ export default function HomePage() {
           onClick={() => navigate('/reference/donate')}
         />
 
-        {/* Я КАТАЮ — раздел в разработке */}
-        <Link
-          to="/i-ride"
+        {/* Я КАТАЮ — конкретный пост Telegram */}
+        <button
+          type="button"
           aria-label={HITS.yakat.label}
           className="pager-hit"
           style={hitStyle(HITS.yakat)}
+          onClick={openYaKatayu}
         />
 
-        {/* SOS — Telegram-чат moto39 */}
+        {/* SOS — конкретный пост Telegram (с подтверждением) */}
         <button
           type="button"
           aria-label={HITS.sos.label}
           className="pager-hit"
           style={hitStyle(HITS.sos)}
-          onClick={openTgChat}
+          onClick={() => openSosHelp('sos')}
         />
 
         {/* Выход */}
@@ -221,13 +254,13 @@ export default function HomePage() {
           onClick={handleExit}
         />
 
-        {/* HELP — Telegram-чат moto39 */}
+        {/* HELP — тот же пост, что и SOS (с подтверждением) */}
         <button
           type="button"
           aria-label={HITS.help.label}
           className="pager-hit"
           style={hitStyle(HITS.help)}
-          onClick={openTgChat}
+          onClick={() => openSosHelp('help')}
         />
 
         {/* Гараж */}

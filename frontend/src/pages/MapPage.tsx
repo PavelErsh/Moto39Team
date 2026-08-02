@@ -237,6 +237,21 @@ const STYLE_ME: MarkerStyle = {
   yandexIconColor: '#ef4444',
 }
 
+// Стили для экстренных статусов (SOS / HELP) — переопределяют обычную
+// раскраску по свежести координат, чтобы выделить райдера на карте.
+const STYLE_HELP: MarkerStyle = {
+  border: '#ca8a04',
+  fill: '#facc15',
+  yandexPreset: 'islands#yellowCircleDotIcon',
+  yandexIconColor: '#facc15',
+}
+const STYLE_SOS: MarkerStyle = {
+  border: '#b91c1c',
+  fill: '#ef4444',
+  yandexPreset: 'islands#redCircleDotIcon',
+  yandexIconColor: '#ef4444',
+}
+
 function styleForRider(lastSeenIso: string): MarkerStyle {
   const diffMin =
     (Date.now() - new Date(lastSeenIso).getTime()) / 60_000
@@ -543,9 +558,24 @@ export default function MapPage() {
     for (const r of riders) {
       const point: [number, number] = [r.lat, r.lng]
       const title = r.full_name || r.username
-      const label = `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
+      const label = (badge ? `[${badge}] ` : '') + `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
       // Цвет метки зависит от времени последнего обновления координат.
-      const style = styleForRider(r.last_seen_at)
+      // Экстренные статусы (help/sos) переопределяют стандартную раскраску.
+      let style: MarkerStyle
+      if (r.emergency_status === 'help') {
+        style = STYLE_HELP
+      } else if (r.emergency_status === 'sos') {
+        style = STYLE_SOS
+      } else {
+        style = styleForRider(r.last_seen_at)
+      }
+      // Подпись для экстренных статусов
+      const badge =
+        r.emergency_status === 'help'
+          ? 'HELP'
+          : r.emergency_status === 'sos'
+            ? 'SOS'
+            : null
 
       const existing = markers.get(r.id)
 
@@ -557,8 +587,8 @@ export default function MapPage() {
             point,
             {
               balloonContent: label,
-              hintContent: title,
-              iconContent: (title[0] || '?').toUpperCase(),
+              hintContent: badge ? `[${badge}] ${title}` : title,
+              iconContent: badge || (title[0] || '?').toUpperCase(),
             },
             {
               preset: style.yandexPreset,
@@ -571,8 +601,8 @@ export default function MapPage() {
           existing.geometry.setCoordinates(point)
           existing.properties.set({
             balloonContent: label,
-            hintContent: title,
-            iconContent: (title[0] || '?').toUpperCase(),
+            hintContent: badge ? `[${badge}] ${title}` : title,
+            iconContent: badge || (title[0] || '?').toUpperCase(),
           })
           // Обновляем визуальный стиль на случай, если категория «свежести»
           // сменилась с предыдущего опроса (например, райдер ушёл в оффлайн).
