@@ -23,6 +23,8 @@ const GaragePage = lazy(() => import('./pages/GaragePage'))
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'))
 const RidersPage = lazy(() => import('./pages/RidersPage'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const EventsPage = lazy(() => import('./pages/EventsPage'))
+const RideDetailPage = lazy(() => import('./pages/RideDetailPage'))
 const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const ReferencesPage = lazy(() => import('./pages/ReferencesPage'))
@@ -92,9 +94,21 @@ export default function App() {
           <Route
             path="/chat"
             element={
-              <ProtectedRoute>
-                <StubPage icon="💬" title="Чат" />
-              </ProtectedRoute>
+              <StubPage
+                icon="💬"
+                title="Байкчат"
+                description="Раздел в разработке."
+              />
+            }
+          />
+          <Route
+            path="/i-ride"
+            element={
+              <StubPage
+                icon="🏍️"
+                title="Я катаю"
+                description="Раздел в разработке."
+              />
             }
           />
           <Route path="/calendar" element={<CalendarPage />} />
@@ -109,14 +123,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/rides"
-            element={
-              <ProtectedRoute>
-                <StubPage icon="🏁" title="Заезды" />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/rides" element={<EventsPage />} />
+          <Route path="/rides/:id" element={<RideDetailPage />} />
           <Route
             path="/map"
             element={

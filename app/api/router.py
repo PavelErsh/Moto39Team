@@ -7,6 +7,7 @@ from app.api.v1 import (
     events,
     motorcycles,
     references,
+    rides,
     users,
 )
 
@@ -17,6 +18,7 @@ api_router.include_router(
     motorcycles.router, prefix="/motorcycles", tags=["motorcycles"]
 )
 api_router.include_router(events.router, prefix="/events", tags=["events"])
+api_router.include_router(rides.router, prefix="/rides", tags=["rides"])
 api_router.include_router(
     references.router, prefix="/references", tags=["references"]
 )

@@ -18,6 +18,15 @@ import {
   type EventPayload,
 } from '../api/events'
 import {
+  apiCreateRide,
+  apiDeleteRide,
+  apiListRides,
+  apiUpdateRide,
+  apiUploadRideImage,
+  type RideItem,
+  type RidePayload,
+} from '../api/rides'
+import {
   apiAdminListUsers,
   apiAdminSetActive,
   apiAdminSetSuperuser,
@@ -34,7 +43,7 @@ import {
 import type { User } from '../api/auth'
 import { useAuth } from '../context/AuthContext'
 
-type Tab = 'events' | 'users' | 'references'
+type Tab = 'events' | 'rides' | 'users' | 'references'
 
 const EMPTY_EVENT_FORM = {
   event_date: '',
@@ -109,6 +118,17 @@ export default function AdminPage() {
   const eventCoverInputRef = useRef<HTMLInputElement | null>(null)
   const eventGalleryInputRef = useRef<HTMLInputElement | null>(null)
 
+  // rides
+  const [rides, setRides] = useState<RideItem[]>([])
+  const [ridesLoading, setRidesLoading] = useState(false)
+  const [ridesError, setRidesError] = useState<string | null>(null)
+  const [rideEditingId, setRideEditingId] = useState<number | null>(null)
+  const [showRideForm, setShowRideForm] = useState(false)
+  const [rideForm, setRideForm] = useState({ ...EMPTY_EVENT_FORM })
+  const [rideBusy, setRideBusy] = useState(false)
+  const rideCoverInputRef = useRef<HTMLInputElement | null>(null)
+  const rideGalleryInputRef = useRef<HTMLInputElement | null>(null)
+
   const loadEvents = useCallback(async () => {
     setEventsLoading(true)
     setEventsError(null)
@@ -145,12 +165,25 @@ export default function AdminPage() {
     }
   }, [])
 
+  const loadRides = useCallback(async () => {
+    setRidesLoading(true)
+    setRidesError(null)
+    try {
+      setRides(await apiListRides())
+    } catch (err) {
+      setRidesError(extractApiError(err))
+    } finally {
+      setRidesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!user?.is_superuser) return
     if (tab === 'events') void loadEvents()
+    else if (tab === 'rides') void loadRides()
     else if (tab === 'users') void loadUsers()
     else if (tab === 'references') void loadRefs()
-  }, [tab, user, loadEvents, loadUsers, loadRefs])
+  }, [tab, user, loadEvents, loadRides, loadUsers, loadRefs])
 
   if (authLoading) return null
   if (!user) return <Navigate to="/login" replace />
@@ -298,6 +331,137 @@ export default function AdminPage() {
       setEventsError(extractApiError(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  // ---------------------- RIDES ----------------------
+
+  function resetRideForm() {
+    setRideForm({ ...EMPTY_EVENT_FORM })
+    setRideEditingId(null)
+  }
+
+  function startRideCreate() {
+    resetRideForm()
+    setShowRideForm(true)
+  }
+
+  function startRideEdit(r: RideItem) {
+    setRideEditingId(r.id)
+    setRideForm({
+      event_date: r.event_date,
+      end_date: r.end_date ?? '',
+      title: r.title,
+      organizer: r.organizer,
+      location: r.location,
+      description: r.description ?? '',
+      cover_image_url: r.cover_image_url ?? '',
+      images: [...r.images],
+    })
+    setShowRideForm(true)
+  }
+
+  async function onRideCoverPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setRideBusy(true)
+    setRidesError(null)
+    try {
+      const { url } = await apiUploadRideImage(file)
+      setRideForm((f) => ({ ...f, cover_image_url: url }))
+    } catch (err) {
+      setRidesError(extractApiError(err))
+    } finally {
+      setRideBusy(false)
+    }
+  }
+
+  async function onRideGalleryPick(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    setRideBusy(true)
+    setRidesError(null)
+    try {
+      const uploaded: string[] = []
+      for (const f of files) {
+        const { url } = await apiUploadRideImage(f)
+        uploaded.push(url)
+      }
+      setRideForm((f) => ({ ...f, images: [...f.images, ...uploaded] }))
+    } catch (err) {
+      setRidesError(extractApiError(err))
+    } finally {
+      setRideBusy(false)
+    }
+  }
+
+  function removeRideGalleryImage(url: string) {
+    setRideForm((f) => ({
+      ...f,
+      images: f.images.filter((u) => u !== url),
+    }))
+  }
+
+  async function onRideSubmit(e: FormEvent) {
+    e.preventDefault()
+    setRidesError(null)
+    if (
+      !rideForm.event_date ||
+      !rideForm.title.trim() ||
+      !rideForm.organizer.trim() ||
+      !rideForm.location.trim()
+    ) {
+      setRidesError('Дата, название, организатор и место обязательны')
+      return
+    }
+    if (rideForm.end_date && rideForm.end_date < rideForm.event_date) {
+      setRidesError('Дата окончания не может быть раньше даты начала')
+      return
+    }
+    setRideBusy(true)
+    try {
+      const endDate =
+        rideForm.end_date && rideForm.end_date !== rideForm.event_date
+          ? rideForm.end_date
+          : null
+      const payload: RidePayload = {
+        event_date: rideForm.event_date,
+        end_date: endDate,
+        title: rideForm.title.trim(),
+        organizer: rideForm.organizer.trim(),
+        location: rideForm.location.trim(),
+        description: rideForm.description.trim() || null,
+        cover_image_url: rideForm.cover_image_url.trim() || null,
+        images: rideForm.images,
+      }
+      if (rideEditingId != null) {
+        await apiUpdateRide(rideEditingId, payload)
+      } else {
+        await apiCreateRide(payload)
+      }
+      setShowRideForm(false)
+      resetRideForm()
+      await loadRides()
+    } catch (err) {
+      setRidesError(extractApiError(err))
+    } finally {
+      setRideBusy(false)
+    }
+  }
+
+  async function onRideDelete(id: number) {
+    if (!window.confirm('Удалить это событие?')) return
+    setRideBusy(true)
+    setRidesError(null)
+    try {
+      await apiDeleteRide(id)
+      await loadRides()
+    } catch (err) {
+      setRidesError(extractApiError(err))
+    } finally {
+      setRideBusy(false)
     }
   }
 
@@ -463,7 +627,7 @@ export default function AdminPage() {
         <div>
           <h1 className="admin-page__title">⚙️ Админка</h1>
           <p className="muted">
-            Управление мотокалендарём, мотосправкой и пользователями
+            Управление мероприятиями, событиями, мотосправкой и пользователями
           </p>
         </div>
       </header>
@@ -475,6 +639,13 @@ export default function AdminPage() {
           onClick={() => setTab('events')}
         >
           📅 Мероприятия
+        </button>
+        <button
+          type="button"
+          className={`admin-tab ${tab === 'rides' ? 'is-active' : ''}`}
+          onClick={() => setTab('rides')}
+        >
+          🎉 События
         </button>
         <button
           type="button"
@@ -812,6 +983,336 @@ export default function AdminPage() {
                           className="btn btn-ghost btn-sm btn-danger"
                           onClick={() => onDelete(e.id)}
                           disabled={busy}
+                        >
+                          Удалить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'rides' && (
+        <div className="admin-section">
+          <div className="admin-section__head">
+            <h2 className="admin-section__title">События</h2>
+            {!showRideForm && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={startRideCreate}
+              >
+                + Добавить
+              </button>
+            )}
+          </div>
+
+          {ridesError && (
+            <div className="alert alert-error">{ridesError}</div>
+          )}
+
+          {showRideForm && (
+            <div className="edit-card">
+              <h3 className="garage__form-title">
+                {rideEditingId != null
+                  ? 'Редактировать событие'
+                  : 'Новое событие'}
+              </h3>
+              <form className="form" onSubmit={onRideSubmit} noValidate>
+                <div className="grid-2">
+                  <label className="field">
+                    <span>Дата начала *</span>
+                    <input
+                      type="date"
+                      required
+                      value={rideForm.event_date}
+                      onChange={(e) =>
+                        setRideForm((f) => ({ ...f, event_date: e.target.value }))
+                      }
+                      disabled={rideBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>
+                      Дата окончания{' '}
+                      <small className="muted">(для многодневных)</small>
+                    </span>
+                    <input
+                      type="date"
+                      value={rideForm.end_date}
+                      min={rideForm.event_date || undefined}
+                      onChange={(e) =>
+                        setRideForm((f) => ({ ...f, end_date: e.target.value }))
+                      }
+                      disabled={rideBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Название *</span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={255}
+                      value={rideForm.title}
+                      onChange={(e) =>
+                        setRideForm((f) => ({ ...f, title: e.target.value }))
+                      }
+                      disabled={rideBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Организатор *</span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={255}
+                      value={rideForm.organizer}
+                      onChange={(e) =>
+                        setRideForm((f) => ({ ...f, organizer: e.target.value }))
+                      }
+                      disabled={rideBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Место *</span>
+                    <input
+                      type="text"
+                      required
+                      maxLength={255}
+                      value={rideForm.location}
+                      onChange={(e) =>
+                        setRideForm((f) => ({ ...f, location: e.target.value }))
+                      }
+                      disabled={rideBusy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Обложка (URL или загрузка)</span>
+                    <input
+                      type="text"
+                      maxLength={500}
+                      placeholder="/media/rides/…"
+                      value={rideForm.cover_image_url}
+                      onChange={(e) =>
+                        setRideForm((f) => ({
+                          ...f,
+                          cover_image_url: e.target.value,
+                        }))
+                      }
+                      disabled={rideBusy}
+                    />
+                    <div className="cover-actions">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={rideCoverInputRef}
+                        onChange={onRideCoverPick}
+                        hidden
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => rideCoverInputRef.current?.click()}
+                        disabled={rideBusy}
+                      >
+                        Загрузить обложку…
+                      </button>
+                      {rideForm.cover_image_url && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() =>
+                            setRideForm((f) => ({ ...f, cover_image_url: '' }))
+                          }
+                          disabled={rideBusy}
+                        >
+                          Убрать
+                        </button>
+                      )}
+                    </div>
+                    {rideForm.cover_image_url && (
+                      <div className="cover-preview">
+                        <img src={rideForm.cover_image_url} alt="обложка" />
+                      </div>
+                    )}
+                  </label>
+                </div>
+                <label className="field">
+                  <span>Описание / текст события</span>
+                  <textarea
+                    rows={10}
+                    maxLength={50000}
+                    value={rideForm.description}
+                    onChange={(e) =>
+                      setRideForm((f) => ({ ...f, description: e.target.value }))
+                    }
+                    disabled={rideBusy}
+                    placeholder="Подробности, программа, условия участия… Абзацы разделяйте пустой строкой."
+                  />
+                </label>
+
+                <div className="field">
+                  <span>Прикреплённые изображения</span>
+                  <div className="cover-actions">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={rideGalleryInputRef}
+                      onChange={onRideGalleryPick}
+                      multiple
+                      hidden
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => rideGalleryInputRef.current?.click()}
+                      disabled={rideBusy}
+                    >
+                      Добавить изображения…
+                    </button>
+                    <small className="muted">
+                      JPG / PNG / WEBP / GIF, до 16 МБ
+                    </small>
+                  </div>
+                  {rideForm.images.length > 0 && (
+                    <div className="gallery-edit">
+                      {rideForm.images.map((url) => (
+                        <div key={url} className="gallery-edit__item">
+                          <img src={url} alt="" loading="lazy" />
+                          <button
+                            type="button"
+                            className="gallery-edit__remove"
+                            onClick={() => removeRideGalleryImage(url)}
+                            disabled={rideBusy}
+                            aria-label="Удалить изображение"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={rideBusy}
+                  >
+                    {rideBusy
+                      ? 'Сохраняем…'
+                      : rideEditingId != null
+                        ? 'Сохранить'
+                        : 'Добавить'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setShowRideForm(false)
+                      resetRideForm()
+                    }}
+                    disabled={rideBusy}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {ridesLoading ? (
+            <div className="muted">Загрузка…</div>
+          ) : rides.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state__icon">🎉</div>
+              <p className="muted">Ни одного события ещё не добавлено.</p>
+            </div>
+          ) : (
+            <div className="events-table-wrap">
+              <table className="events-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Обложка</th>
+                    <th>Название</th>
+                    <th>Организатор</th>
+                    <th>Место</th>
+                    <th>Изобр.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rides.map((r) => (
+                    <tr key={r.id}>
+                      <td className="events-table__date">
+                        {r.end_date && r.end_date !== r.event_date
+                          ? `${r.event_date} — ${r.end_date}`
+                          : r.event_date}
+                      </td>
+                      <td>
+                        {r.cover_image_url ? (
+                          <div className="events-table__cover">
+                            <img
+                              src={r.cover_image_url}
+                              alt=""
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="events-table__title">{r.title}</div>
+                        {r.description && (
+                          <div className="events-table__desc">
+                            {r.description}
+                          </div>
+                        )}
+                        {r.images.length > 0 && (
+                          <div className="events-table__thumbs">
+                            {r.images.slice(0, 6).map((url) => (
+                              <a
+                                key={url}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="events-table__thumb"
+                              >
+                                <img src={url} alt="" loading="lazy" />
+                              </a>
+                            ))}
+                            {r.images.length > 6 && (
+                              <span className="events-table__thumb-more">
+                                +{r.images.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td>{r.organizer}</td>
+                      <td>{r.location}</td>
+                      <td>{r.images.length + (r.cover_image_url ? 1 : 0)}</td>
+                      <td className="events-table__actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => startRideEdit(r)}
+                          disabled={rideBusy}
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() => onRideDelete(r.id)}
+                          disabled={rideBusy}
                         >
                           Удалить
                         </button>

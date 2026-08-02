@@ -7,4 +7,5 @@ from app.models.email_verification import EmailVerificationCode  # noqa: F401
 from app.models.event import Event  # noqa: F401
 from app.models.motorcycle import Motorcycle  # noqa: F401
 from app.models.reference import Reference  # noqa: F401
+from app.models.ride import Ride  # noqa: F401
 from app.models.user import User  # noqa: F401

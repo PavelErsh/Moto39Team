@@ -2563,3 +2563,100 @@ html.low-end .nav-user:hover {
   contain-intrinsic-size: 220px;
 }
 
+/* =========================================================
+   МОТО-ПЕЙДЖЕР (стартовая страница) — версия с картинкой.
+   В качестве «дизайна» используем сам исходный мокап
+   `/public/pager.webp`. Поверх него абсолютным позиционированием
+   в процентах раскладываются прозрачные кликабельные зоны
+   (`.pager-hit`), которые ведут на соответствующие маршруты.
+   Такой подход даёт полное визуальное соответствие референсу.
+   ========================================================= */
+
+.pager-bg {
+  display: block;
+  padding: 0;
+  margin: 0;
+  background: #000;
+  width: 100%;
+}
+
+/*
+   Когда шапка/футер скрыты (главная страница авторизованного),
+   родительские контейнеры Layout не должны создавать отступы:
+   картинка пейджера обязана занимать всю ширину экрана.
+*/
+.app-shell--no-header .main {
+  padding: 0;
+}
+.app-shell--no-header .main > .container {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  width: 100%;
+}
+
+.pager-bg__inner {
+  position: relative;
+  line-height: 0;   /* убираем inline-baseline у img */
+  /* Полная ширина экрана. Высота рассчитывается автоматически по
+     пропорции картинки (aspect-ratio на самой img). Так хит-зоны
+     в процентах всегда точно попадают в свои кнопки. */
+  width: 100%;
+  margin: 0;
+}
+
+.pager-bg__img {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none; /* клики уходят на хит-зоны сверху */
+}
+
+/* На очень широких экранах (десктоп) контейнер ограничен по высоте
+   вьюпорта, а ширина рассчитывается через aspect-ratio — картинка
+   выглядит как «телефон» по центру и занимает всю доступную высоту. */
+
+/* Опциональная аватарка пользователя, положенная поверх «нарисованного»
+   аватара в углу экрана пейджера. */
+.pager-bg__avatar {
+  position: absolute;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #24ff2f;
+  box-shadow: 0 0 6px rgba(36, 255, 47, 0.5);
+  pointer-events: none;
+}
+
+/* Прозрачная кликабельная зона поверх кнопки на картинке.
+   В обычном состоянии — полностью невидимая; на hover/focus —
+   чуть подсвечивается, чтобы было понятно, что элемент кликабельный. */
+.pager-hit {
+  display: block;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-decoration: none;
+  color: transparent;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.pager-hit:hover,
+.pager-hit:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(36, 255, 47, 0.6),
+              0 0 14px rgba(36, 255, 47, 0.35);
+}
+.pager-hit:active {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* -------------- (устаревшая ручная стилизация пейджера удалена) --------------
+   Раньше здесь были правила `.pager`, `.pager__device`, `.pkey--*` и т.д.
+   — они рисовали пейджер средствами CSS. Сейчас мы используем сам мокап
+   (`/public/pager.webp`) как фон, поэтому старые стили больше не нужны. */
+
