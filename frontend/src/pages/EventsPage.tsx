@@ -109,7 +109,7 @@ export default function EventsPage() {
       <header className="calendar-page__head">
         <div>
           <h1 className="calendar-page__title">🎉 События</h1>
-          <p className="muted">Мото-события и мероприятия</p>
+          <p className="muted">Мотособытия и мероприятия не из мотокалендаря. Для внесения данных о Вашем событии пишите @CrazyTony39</p>
         </div>
       </header>
 

@@ -57,7 +57,7 @@ export default function ReferencesPage() {
         <div>
           <h1 className="references-page__title">📖 Мотосправка</h1>
           <p className="muted">
-            База знаний мотоциклиста: советы, регламент, техника, право
+            Для внесения Ваших данных в мотосправку пишите @CrazyTony39
           </p>
         </div>
         {user?.is_superuser && (
