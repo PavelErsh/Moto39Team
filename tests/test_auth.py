@@ -5,6 +5,8 @@
 Отдельно проверяем полный сценарий с кодом подтверждения через
 monkeypatch настроек и мок отправки email.
 """
+import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -144,3 +146,79 @@ async def test_email_verification_flow(monkeypatch) -> None:
         )
         assert r_me.status_code == 200
         assert r_me.json()["email"] == "verify@example.com"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_registration_same_email() -> None:
+    """Две параллельные регистрации на один email не создают двух юзеров.
+
+    Именно эта гонка приводила к тому, что «пользователи попадали на
+    чужие аккаунты»: обе конкурирующие транзакции успевали пройти
+    проверку уникальности до insert'а, а вторая падала с 500 (Integrity
+    Error) уже после того, как первая создавала запись. Мы ждём, что
+    один запрос завершится 202 (принят), а второй получит осмысленный
+    409 (или 400 — если наш пре-check оказался быстрее второго),
+    но никак не 500.
+    """
+    transport = ASGITransport(app=app)
+    payload_a = {
+        "email": "race@example.com",
+        "username": "raceuser_a",
+        "password": "strongpass123",
+        "full_name": "Race A",
+    }
+    payload_b = {
+        # Тот же email в другом регистре — раньше это позволяло обойти
+        # проверку уникальности, потому что БД считает 'Race@…' и
+        # 'race@…' разными строками.
+        "email": "Race@example.com",
+        "username": "raceuser_b",
+        "password": "strongpass123",
+        "full_name": "Race B",
+    }
+
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        r_a, r_b = await asyncio.gather(
+            ac.post("/api/v1/auth/register", json=payload_a),
+            ac.post("/api/v1/auth/register", json=payload_b),
+        )
+
+    statuses = sorted([r_a.status_code, r_b.status_code])
+    # Один успех — второй должен быть отвергнут; ни одного 5xx быть
+    # не должно.
+    assert 202 in statuses
+    assert statuses[1] in (400, 409), (r_a.text, r_b.text)
+    assert all(200 <= s < 500 for s in statuses)
+
+
+@pytest.mark.asyncio
+async def test_register_normalizes_email_case() -> None:
+    """Регистрация двух разных регистров одного email — конфликт."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        r1 = await ac.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "MixedCase@example.com",
+                "username": "mixed_a",
+                "password": "strongpass123",
+                "full_name": "A",
+            },
+        )
+        assert r1.status_code == 202, r1.text
+
+        r2 = await ac.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "mixedcase@example.com",
+                "username": "mixed_b",
+                "password": "strongpass123",
+                "full_name": "B",
+            },
+        )
+        # Пре-check ловит совпадение по нормализованному email.
+        assert r2.status_code in (400, 409), r2.text

@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 
 
 from app.api.deps import CurrentActiveUser, DbSession
@@ -50,6 +51,16 @@ def _as_utc(dt: datetime) -> datetime:
     return dt
 
 
+def _normalize_email(email: str) -> str:
+    """Единый вид email во всех проверках/хранении: lower + strip."""
+    return email.strip().lower()
+
+
+def _normalize_username(username: str) -> str:
+    """Единый вид username: strip. Регистр не режем — пусть остаётся."""
+    return username.strip()
+
+
 @router.get(
     "/config",
     summary="Публичная конфигурация фронтенда (site key капчи и т.п.)",
@@ -81,6 +92,12 @@ async def public_config() -> dict[str, object]:
 async def register(
     data: UserCreate, db: DbSession, request: Request
 ) -> RegisterStartResponse:
+    # 0. Нормализуем ввод: email — в нижний регистр, обрезаем пробелы.
+    # Без этого две параллельные регистрации 'User@x' и 'user@x'
+    # проходили обе проверки и падали на insert.
+    email = _normalize_email(data.email)
+    username = _normalize_username(data.username)
+
     # 1. Проверяем капчу Cloudflare Turnstile (если включена).
     if settings.TURNSTILE_ENABLED:
         ok = await verify_turnstile_token(
@@ -93,12 +110,12 @@ async def register(
             )
 
     # 2. Проверяем, что email/username ещё не заняты.
-    if await user_crud.get_by_email(db, data.email):
+    if await user_crud.get_by_email(db, email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким email уже существует",
         )
-    if await user_crud.get_by_username(db, data.username):
+    if await user_crud.get_by_username(db, username):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким username уже существует",
@@ -106,17 +123,29 @@ async def register(
 
     # 3. Если верификация email выключена — создаём пользователя сразу.
     if not settings.EMAIL_VERIFICATION_ENABLED:
-        await user_crud.create(db, data)
+        try:
+            await user_crud.create(
+                db,
+                data.model_copy(update={"email": email, "username": username}),
+            )
+        except IntegrityError:
+            # Кто-то успел зарегистрироваться с этими же данными
+            # между нашими проверками и insert'ом.
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Пользователь с таким email или username уже существует"
+                ),
+            )
         return RegisterStartResponse(
-            email=data.email,
+            email=email,
             message="Регистрация выполнена (email verification disabled)",
             expires_in_minutes=0,
         )
 
     # 4. Rate-limit ресенда: если недавно уже отправляли код — не спамим.
-    existing = await email_verification_crud.get_active_by_email(
-        db, data.email
-    )
+    existing = await email_verification_crud.get_active_by_email(db, email)
     if existing is not None:
         last_sent = _as_utc(existing.last_sent_at)
         elapsed = (
@@ -136,25 +165,35 @@ async def register(
 
     # 5. Сохраняем черновик регистрации + хеш пароля + одноразовый код.
     code = generate_code()
-    await email_verification_crud.create(
-        db,
-        email=data.email,
-        username=data.username,
-        full_name=data.full_name,
-        hashed_password=hash_password(data.password),
-        code=code,
-    )
+    try:
+        await email_verification_crud.create(
+            db,
+            email=email,
+            username=username,
+            full_name=data.full_name,
+            hashed_password=hash_password(data.password),
+            code=code,
+        )
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Заявка на регистрацию для этого email уже создаётся, "
+                "попробуйте ещё раз через минуту."
+            ),
+        )
 
     # 6. Отправляем письмо (в dev может печатать в лог). Если SMTP
     # не сконфигурирован и fallback выключен — не отдаём 500 наружу,
     # а откатываем черновик и возвращаем 503 с понятной причиной.
     try:
-        await send_verification_code(data.email, code)
+        await send_verification_code(email, code)
     except Exception as exc:  # noqa: BLE001
         logger.exception(
-            "Не удалось отправить письмо с кодом на %s", data.email
+            "Не удалось отправить письмо с кодом на %s", email
         )
-        await email_verification_crud.delete_by_email(db, data.email)
+        await email_verification_crud.delete_by_email(db, email)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
@@ -165,10 +204,9 @@ async def register(
         ) from exc
 
     return RegisterStartResponse(
-        email=data.email,
+        email=email,
         expires_in_minutes=settings.EMAIL_CODE_TTL_MINUTES,
     )
-
 
 
 @router.post(
@@ -188,7 +226,8 @@ async def verify_email(
             detail="Верификация email отключена в этой сборке",
         )
 
-    draft = await email_verification_crud.get_active_by_email(db, data.email)
+    email = _normalize_email(data.email)
+    draft = await email_verification_crud.get_active_by_email(db, email)
     if draft is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -197,7 +236,7 @@ async def verify_email(
 
     # Срок действия.
     if _as_utc(draft.expires_at) < datetime.now(timezone.utc):
-        await email_verification_crud.delete_by_email(db, data.email)
+        await email_verification_crud.delete_by_email(db, email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Срок действия кода истёк, запросите новый",
@@ -205,7 +244,7 @@ async def verify_email(
 
     # Лимит попыток.
     if draft.attempts >= settings.EMAIL_CODE_MAX_ATTEMPTS:
-        await email_verification_crud.delete_by_email(db, data.email)
+        await email_verification_crud.delete_by_email(db, email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Слишком много неверных попыток, запросите новый код",
@@ -220,25 +259,40 @@ async def verify_email(
 
     # На всякий случай ещё раз проверяем уникальность (мог кто-то занять).
     if await user_crud.get_by_email(db, draft.email):
-        await email_verification_crud.delete_by_email(db, data.email)
+        await email_verification_crud.delete_by_email(db, email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким email уже существует",
         )
     if await user_crud.get_by_username(db, draft.username):
-        await email_verification_crud.delete_by_email(db, data.email)
+        await email_verification_crud.delete_by_email(db, email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь с таким username уже существует",
         )
 
-    user = await user_crud.create_from_verified(
-        db,
-        email=draft.email,
-        username=draft.username,
-        full_name=draft.full_name,
-        hashed_password=draft.hashed_password,
-    )
+    # Создаём пользователя. Ловим IntegrityError на случай гонки между
+    # двумя параллельными /verify-email запросами (один вручную,
+    # второй — по автоповтору фронта): благодаря уникальному индексу
+    # в БД точно создастся только один аккаунт, второму отдадим 409.
+    try:
+        user = await user_crud.create_from_verified(
+            db,
+            email=draft.email,
+            username=draft.username,
+            full_name=draft.full_name,
+            hashed_password=draft.hashed_password,
+        )
+    except IntegrityError:
+        await db.rollback()
+        await email_verification_crud.delete_by_email(db, email)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Пользователь уже был создан. Попробуйте войти обычным "
+                "способом."
+            ),
+        )
     await email_verification_crud.delete_by_email(db, draft.email)
 
     return Token(
@@ -261,7 +315,8 @@ async def resend_code(
             detail="Верификация email отключена",
         )
 
-    draft = await email_verification_crud.get_active_by_email(db, data.email)
+    email = _normalize_email(data.email)
+    draft = await email_verification_crud.get_active_by_email(db, email)
     if draft is None:
         # Не раскрываем, зарегистрирован ли email; просто говорим,
         # что нужно снова начать регистрацию.
@@ -287,10 +342,10 @@ async def resend_code(
 
     code = generate_code()
     await email_verification_crud.update_code(db, draft, code=code)
-    await send_verification_code(data.email, code)
+    await send_verification_code(email, code)
 
     return RegisterStartResponse(
-        email=data.email,
+        email=email,
         expires_in_minutes=settings.EMAIL_CODE_TTL_MINUTES,
     )
 

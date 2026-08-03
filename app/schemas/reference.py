@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ReferenceBase(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    slug: str = Field(min_length=1, max_length=160, pattern=r"^[a-z0-9\-]+$")
     category: str | None = Field(default=None, max_length=100)
     summary: str | None = Field(default=None, max_length=500)
     content: str = Field(default="", max_length=50000)
@@ -15,7 +14,15 @@ class ReferenceBase(BaseModel):
 
 
 class ReferenceCreate(ReferenceBase):
-    pass
+    # slug необязателен: если не передан или пуст — генерируется из title
+    # автоматически. Уникальность slug гарантирует бэкенд, при коллизии к
+    # slug добавляется числовой суффикс `-2`, `-3` и т.д.
+    slug: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+        pattern=r"^[a-z0-9\-]+$",
+    )
 
 
 class ReferenceUpdate(BaseModel):
@@ -32,6 +39,7 @@ class ReferenceUpdate(BaseModel):
 
 class ReferenceRead(ReferenceBase):
     id: int
+    slug: str
     created_by: int | None = None
     created_at: datetime
     updated_at: datetime

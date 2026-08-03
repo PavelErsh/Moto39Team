@@ -55,12 +55,9 @@ async def create_reference(
     admin: CurrentSuperuser,
     db: DbSession,
 ) -> ReferenceRead:
-    existing = await reference_crud.get_by_slug(db, data.slug)
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Статья с таким slug уже существует",
-        )
+    # slug формируется автоматически на уровне CRUD: если клиент не
+    # прислал slug, он строится из title, а коллизии разрешаются
+    # добавлением числового суффикса (`-2`, `-3` и т.д.).
     ref = await reference_crud.create(db, data, created_by=admin.id)
     return ReferenceRead.model_validate(ref)
 
