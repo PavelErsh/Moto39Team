@@ -57,31 +57,12 @@ const EMPTY_EVENT_FORM = {
 }
 
 const EMPTY_REF_FORM = {
-  slug: '',
   title: '',
   category: '',
   summary: '',
   content: '',
   cover_image_url: '',
   images: [] as string[],
-}
-
-function slugify(s: string): string {
-  const map: Record<string, string> = {
-    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh',
-    з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
-    п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts',
-    ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
-    я: 'ya',
-  }
-  return s
-    .toLowerCase()
-    .split('')
-    .map((ch) => (map[ch] !== undefined ? map[ch] : ch))
-    .join('')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 160)
 }
 
 export default function AdminPage() {
@@ -111,7 +92,6 @@ export default function AdminPage() {
   const [refEditingId, setRefEditingId] = useState<number | null>(null)
   const [showRefForm, setShowRefForm] = useState(false)
   const [refForm, setRefForm] = useState({ ...EMPTY_REF_FORM })
-  const [refSlugTouched, setRefSlugTouched] = useState(false)
   const [refBusy, setRefBusy] = useState(false)
   const coverInputRef = useRef<HTMLInputElement | null>(null)
   const galleryInputRef = useRef<HTMLInputElement | null>(null)
@@ -490,7 +470,6 @@ export default function AdminPage() {
   function resetRefForm() {
     setRefForm({ ...EMPTY_REF_FORM })
     setRefEditingId(null)
-    setRefSlugTouched(false)
   }
 
   function startRefCreate() {
@@ -501,7 +480,6 @@ export default function AdminPage() {
   function startRefEdit(r: ReferenceItem) {
     setRefEditingId(r.id)
     setRefForm({
-      slug: r.slug,
       title: r.title,
       category: r.category ?? '',
       summary: r.summary ?? '',
@@ -509,39 +487,25 @@ export default function AdminPage() {
       cover_image_url: r.cover_image_url ?? '',
       images: [...r.images],
     })
-    setRefSlugTouched(true)
     setShowRefForm(true)
   }
 
   function onRefTitleChange(value: string) {
-    setRefForm((f) => ({
-      ...f,
-      title: value,
-      slug: refSlugTouched ? f.slug : slugify(value),
-    }))
-  }
-
-  function onRefSlugChange(value: string) {
-    setRefSlugTouched(true)
-    setRefForm((f) => ({ ...f, slug: value }))
+    setRefForm((f) => ({ ...f, title: value }))
   }
 
   async function onRefSubmit(e: FormEvent) {
     e.preventDefault()
     setRefsError(null)
-    const slug = refForm.slug.trim()
-    if (!refForm.title.trim() || !slug) {
-      setRefsError('Название и slug обязательны')
-      return
-    }
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      setRefsError('Slug может содержать только латиницу, цифры и дефис')
+    if (!refForm.title.trim()) {
+      setRefsError('Название обязательно')
       return
     }
     setRefBusy(true)
     try {
+      // slug на клиенте не задаём: бэкенд сгенерирует его из title
+      // автоматически и обеспечит уникальность.
       const payload: ReferencePayload = {
-        slug,
         title: refForm.title.trim(),
         category: refForm.category.trim() || null,
         summary: refForm.summary.trim() || null,
@@ -1360,20 +1324,6 @@ export default function AdminPage() {
                       maxLength={255}
                       value={refForm.title}
                       onChange={(e) => onRefTitleChange(e.target.value)}
-                      disabled={refBusy}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>
-                      Slug * <small className="muted">(URL, латиница)</small>
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      maxLength={160}
-                      pattern="[a-z0-9\-]+"
-                      value={refForm.slug}
-                      onChange={(e) => onRefSlugChange(e.target.value)}
                       disabled={refBusy}
                     />
                   </label>

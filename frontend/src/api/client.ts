@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { Capacitor } from '@capacitor/core'
 
 // ---------------------------------------------------------------------------
@@ -47,22 +47,103 @@ export const api = axios.create({
 
 const ACCESS_KEY = 'moto39_access_token'
 const REFRESH_KEY = 'moto39_refresh_token'
+// «Эпоха» токенов. Инкрементируется при каждой смене или сбросе токенов.
+// Асинхронные операции (например, apiMe на старте приложения) захватывают
+// значение эпохи ПЕРЕД отправкой запроса и потом сравнивают его с текущим:
+// если пока запрос выполнялся, пользователь успел зарегистрироваться /
+// войти под другим аккаунтом или разлогиниться, устаревший ответ не
+// должен перезаписывать актуальное состояние.
+const EPOCH_KEY = 'moto39_token_epoch'
 
-export const tokenStorage = {
-  getAccess: () => localStorage.getItem(ACCESS_KEY),
-  getRefresh: () => localStorage.getItem(REFRESH_KEY),
-  set: (access: string, refresh: string) => {
-    localStorage.setItem(ACCESS_KEY, access)
-    localStorage.setItem(REFRESH_KEY, refresh)
-  },
-  clear: () => {
-    localStorage.removeItem(ACCESS_KEY)
-    localStorage.removeItem(REFRESH_KEY)
-  },
+function readEpoch(): number {
+  try {
+    return Number(localStorage.getItem(EPOCH_KEY) || '0') || 0
+  } catch {
+    return 0
+  }
 }
 
-// Проставляем access-токен в каждый запрос
-api.interceptors.request.use((config) => {
+function bumpEpoch(): void {
+  try {
+    localStorage.setItem(EPOCH_KEY, String(readEpoch() + 1))
+  } catch {
+    /* noop */
+  }
+}
+
+export const tokenStorage = {
+  getAccess: () => {
+    try {
+      return localStorage.getItem(ACCESS_KEY)
+    } catch {
+      return null
+    }
+  },
+  getRefresh: () => {
+    try {
+      return localStorage.getItem(REFRESH_KEY)
+    } catch {
+      return null
+    }
+  },
+  set: (access: string, refresh: string) => {
+    try {
+      localStorage.setItem(ACCESS_KEY, access)
+      localStorage.setItem(REFRESH_KEY, refresh)
+    } catch {
+      /* noop */
+    }
+    bumpEpoch()
+  },
+  clear: () => {
+    try {
+      localStorage.removeItem(ACCESS_KEY)
+      localStorage.removeItem(REFRESH_KEY)
+    } catch {
+      /* noop */
+    }
+    bumpEpoch()
+  },
+  /** Текущая «эпоха» токенов. См. комментарий выше. */
+  getEpoch: readEpoch,
+}
+
+/**
+ * Пути, которые считаются публичными: для них НЕ проставляем
+ * Authorization-заголовок и НЕ запускаем автообновление токенов при 401.
+ *
+ * Причина: раньше, если в localStorage случайно оставались токены
+ * прежнего пользователя (например, вкладка открыта после logout),
+ * запрос `/auth/register` уходил с чужим Bearer, а после `/auth/verify-email`
+ * фоновый interceptor мог реанимировать чужую сессию через `/auth/refresh`
+ * и подставить данные другого аккаунта в приложение — новый пользователь
+ * оказывался залогинен под чужим ID.
+ */
+const PUBLIC_AUTH_PATHS = [
+  '/auth/config',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/resend-code',
+  '/auth/login',
+  '/auth/refresh',
+]
+
+function isPublicAuthPath(url: string | undefined): boolean {
+  if (!url) return false
+  return PUBLIC_AUTH_PATHS.some((p) => url.includes(p))
+}
+
+// Проставляем access-токен в каждый запрос, кроме публичных auth-ручек.
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (isPublicAuthPath(config.url)) {
+    // Явно вычищаем любой унаследованный заголовок Authorization,
+    // чтобы точно не отправить чужой Bearer вместе с регистрацией.
+    if (config.headers) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (config.headers as any).Authorization
+    }
+    return config
+  }
   const token = tokenStorage.getAccess()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -98,8 +179,9 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       original &&
       !original._retry &&
-      !original.url?.includes('/auth/login') &&
-      !original.url?.includes('/auth/refresh')
+      // Ни один публичный auth-endpoint не должен триггерить refresh:
+      // 401 от них означает «неверные данные», а не «токен протух».
+      !isPublicAuthPath(original.url)
     ) {
       original._retry = true
       refreshingPromise = refreshingPromise ?? refreshTokens()

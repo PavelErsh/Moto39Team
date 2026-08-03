@@ -57,7 +57,7 @@ type Hit = {
 /* eslint-disable no-multi-spaces */
 const HITS: Record<string, Hit> = {
   // Верх экрана пейджера
-  avatar:   { key: 'avatar',   label: 'Профиль',        top: '16%', left: '9.5%', width: '12.5%',   height: '5.8%',  round: true },
+  avatar:   { key: 'avatar',   label: 'Профиль',        top: '18%', left: '9.5%', width: '13.5%',   height: '6.8%',  round: true },
   gear:     { key: 'gear',     label: 'Настройки',      top: '16%', left: '79.5%', width: '12.5%',   height: '5.6%',  round: true },
 
   // «Мотокарта» — зелёная кнопка внизу экрана
@@ -94,14 +94,16 @@ export default function HomePage() {
   // «Прибор-пейджер» показывается ТОЛЬКО авторизованным пользователям.
   if (!user) {
     return (
-      <div className="home">
+      <div className="home home--guest">
         <section className="hero">
-          <div className="hero__moto">🏍️</div>
-          <h1 className="hero__title">MOTO39</h1>
+          <img
+            src="/logo.jpeg"
+            alt="MOTO39"
+            className="hero__logo"
+          />
+         
           <p className="hero__lead">
-            Один руль — одна дорога.
-            <br />
-            Вступай, чтобы попасть в гараж, к заездам и в общий чат.
+            Простое и функциональное приложение для коммуникации мотоциклистов Калининграда и области.
           </p>
 
           <div className="hero__cta">
@@ -140,20 +142,32 @@ export default function HomePage() {
   // Открыть пост SOS/HELP — с подтверждением, что ситуация срочная.
   // После подтверждения устанавливает emergency_status на бэке (меняет
   // вид маркера на карте: help → жёлтая точка, sos → красная точка).
-  const openSosHelp = async (type: 'help' | 'sos') => {
+  //
+  // ВАЖНО (Safari): `window.open` должен вызываться СИНХРОННО в рамках
+  // пользовательского жеста. После `await` Safari считает, что жест
+  // потерян, и блокирует открытие новой вкладки (даже с noopener). Поэтому
+  // сначала открываем Telegram, а обновление статуса делаем в фоне.
+  const openSosHelp = (type: 'help' | 'sos') => {
     const confirmed = window.confirm(
       '⚠️ Эти кнопки для чрезвычайных ситуаций.\n' +
       'В случае отправки ложных сообщений к вам могут быть применены меры вплоть до блокировки.\n\n' +
       'Нажмите «ОК» — если ситуация срочная,\n' +
       '«Отмена» — если нажали случайно.',
     )
-    if (confirmed) {
+    if (!confirmed) return
+
+    // 1) Синхронно открываем Telegram — иначе Safari заблокирует popup.
+    //    Сохраняем ссылку на окно на случай, если понадобится fallback
+    //    (см. ниже — если браузер вернул null, значит popup заблокирован
+    //    и мы делаем навигацию в текущей вкладке).
+    const win = window.open(TG_SOS_URL, '_blank', 'noopener,noreferrer')
+
+    // 2) В фоне обновляем emergency_status и перечитываем профиль,
+    //    чтобы собственный маркер на карте перекрасился в соответствующий
+    //    цвет ещё до следующего опроса /users/locations.
+    ;(async () => {
       try {
         await apiUpdateEmergencyStatus(type)
-        // Немедленно перечитываем профиль, чтобы собственный маркер на
-        // карте перекрасился в соответствующий цвет ещё до следующего
-        // опроса /users/locations (иначе пользователь не увидит, что
-        // его статус изменился).
         try {
           await refreshUser()
         } catch {
@@ -162,7 +176,14 @@ export default function HomePage() {
       } catch {
         // Тихо игнорируем — главное открыть чат
       }
-      window.open(TG_SOS_URL, '_blank', 'noopener,noreferrer')
+    })()
+
+    // 3) Fallback: если window.open вернул null (некоторые версии Safari
+    //    и режимы PWA/standalone блокируют popup даже при синхронном
+    //    вызове) — уходим в Telegram прямо в текущей вкладке. Обновление
+    //    статуса уже запущено выше и продолжит выполняться до unload.
+    if (!win) {
+      window.location.href = TG_SOS_URL
     }
   }
 
@@ -247,8 +268,8 @@ export default function HomePage() {
             alt={user.username}
             className="pager-bg__avatar"
             style={{
-              top: '13.9%',
-              left: '10.8%',
+              top: '15.9%',
+              left: '9.8%',
               width: '13.4%',
               height: '6.1%',
             }}

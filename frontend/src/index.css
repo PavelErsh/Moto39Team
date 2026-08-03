@@ -89,7 +89,7 @@ body {
   -webkit-font-smoothing: antialiased;
 
   background-color: var(--bg);
-  /* лёгкое зерно + зелёная подсветка */
+  /* лёгкое зерно +  подсветка */
   background-image:
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.55 0 0 0 0 0.3 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
     radial-gradient(1200px 700px at 50% -10%, rgba(57, 255, 20, 0.06), transparent 60%),
@@ -97,7 +97,7 @@ body {
   background-attachment: fixed;
 }
 
-/* Едва заметные CRT-сканлайны — только на глобальном оверлее */
+/* Едва заметные CRайны — только на глобальном оверлее */
 body::before {
   content: '';
   position: fixed;
@@ -419,6 +419,38 @@ img.emoji {
   gap: clamp(32px, 6vw, 64px);
 }
 
+/*
+   Гостевая (неавторизованная) главная страница.
+   Фон делаем «тон в тон» с цветом подложки логотипа — #1a1a1a
+   (это ровный однородный цвет по краям /logo.jpeg). Чтобы фон
+   покрыл всю страницу целиком, включая шапку/подвал и области
+   за пределами контейнера, используем :has() и переопределяем
+   фон на body: убираем шум/градиенты/CRT-оверлеи, шапку/футер
+   тоже красим в тот же тон.
+*/
+body:has(.home--guest) {
+  background: #1a1a1a;
+  background-image: none;
+}
+body:has(.home--guest)::before,
+body:has(.home--guest)::after {
+  display: none;
+}
+body:has(.home--guest) .site-header {
+  background: #1a1a1a;
+  border-bottom-color: transparent;
+}
+body:has(.home--guest) .site-header::after {
+  display: none;
+}
+body:has(.home--guest) .site-footer {
+  background: #1a1a1a;
+  border-top-color: transparent;
+}
+body:has(.home--guest) .site-footer::before {
+  display: none;
+}
+
 .hero {
   text-align: center;
   padding: clamp(24px, 6vw, 64px) 0 clamp(8px, 2vw, 16px);
@@ -428,6 +460,17 @@ img.emoji {
   line-height: 1;
   margin-bottom: 12px;
   filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.6));
+}
+/*
+   Логотип-картинка на гостевой странице приветствия.
+   Заменяет старую эмодзи-иконку 🏍️.
+*/
+.hero__logo {
+  display: block;
+  width: clamp(300px, 45vw, 440px);
+  height: auto;
+  margin: 0 auto 20px;
+  object-fit: contain;
 }
 .hero__title {
   font-family: var(--font-head);

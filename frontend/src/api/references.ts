@@ -15,7 +15,9 @@ export interface ReferenceItem {
 }
 
 export interface ReferencePayload {
-  slug: string
+  // slug необязателен: если не указан, бэкенд сгенерирует его из title
+  // и обеспечит уникальность (добавит суффикс -2, -3 при коллизиях).
+  slug?: string
   title: string
   category?: string | null
   summary?: string | null
