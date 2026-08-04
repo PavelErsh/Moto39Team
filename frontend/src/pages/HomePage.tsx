@@ -35,11 +35,43 @@ import { apiUpdateEmergencyStatus } from '../api/motorcycles'
 // URL telegram-чата, на который ведут кнопки SOS / HELP / ОБЩИЙ ЧАТ.
 const TG_CHAT_URL = 'https://t.me/mkld39'
 
-// URL конкретного поста в telegram-чате для кнопки «Я КАТАЮ».
+// URL конкретного поста в telegram-чате для кнопки «Я КАТАЮ» (открывается
+// вместе с включением статуса — как быстрый способ отписаться в общем
+// чате, что вы уже в седле).
 const TG_YA_KATAYU_URL = 'https://t.me/mkld39/1612'
 
 // URL для кнопки SOS.
 const TG_SOS_URL = 'https://t.me/mkld39/1611'
+
+// Показать пуш-уведомление о том, что режим «Я КАТАЮ» включён.
+// Работает и в браузере (Web Notifications API), и в PWA. Если
+// разрешения нет — молча пропускаем, плашка на пейджере всё равно
+// подтверждает включение статуса.
+function showRidingNotification(): void {
+  if (typeof window === 'undefined') return
+  if (!('Notification' in window)) return
+  const options: NotificationOptions = {
+    body: 'Статус активен 3 часа. Другие райдеры увидят вас на мотокарте.',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'moto39-riding',
+  }
+  const trigger = () => {
+    try {
+      new Notification('🏍️ Режим «Я катаю» включён', options)
+    } catch {
+      /* noop */
+    }
+  }
+  if (Notification.permission === 'granted') {
+    trigger()
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') trigger()
+    }).catch(() => { /* noop */ })
+  }
+}
+
 
 // Хиты — прямоугольники в процентах от размеров картинки-подложки.
 // Значения подобраны по референсу `/pager.jpeg`.
@@ -134,10 +166,35 @@ export default function HomePage() {
     window.open(TG_CHAT_URL, '_blank', 'noopener,noreferrer')
   }
 
-  // Открыть конкретный пост «Я КАТАЮ» в telegram-чате.
+  // Кнопка «Я КАТАЮ»:
+  //   1. Синхронно открываем пост в Telegram (иначе Safari блокирует popup).
+  //   2. В фоне включаем статус ``riding`` — на карте появится зелёная
+  //      подпись «КАТАЮ» над вашей меткой (сброс автоматом через 3 часа).
+  //   3. Показываем нативное уведомление о том, что режим активен.
+  //   Плюс над пейджером появляется плашка «🏍️ Я катаю» с кнопкой
+  //   ручного сброса — так же, как SOS/HELP.
   const openYaKatayu = () => {
-    window.open(TG_YA_KATAYU_URL, '_blank', 'noopener,noreferrer')
+    const win = window.open(TG_YA_KATAYU_URL, '_blank', 'noopener,noreferrer')
+
+    ;(async () => {
+      try {
+        await apiUpdateEmergencyStatus('riding')
+        try {
+          await refreshUser()
+        } catch {
+          /* noop */
+        }
+        showRidingNotification()
+      } catch {
+        /* noop */
+      }
+    })()
+
+    if (!win) {
+      window.location.href = TG_YA_KATAYU_URL
+    }
   }
+
 
   // Открыть пост SOS/HELP — с подтверждением, что ситуация срочная.
   // После подтверждения устанавливает emergency_status на бэке (меняет
@@ -187,16 +244,20 @@ export default function HomePage() {
     }
   }
 
-  // Активный экстренный статус текущего пользователя — по нему
-  // показываем поверх пейджера видимую плашку «SOS/HELP активен».
-  // Так пользователь сразу видит, что его сигнал сохранён (и на карте
-  // его метка изменит цвет), плюс есть возможность отменить статус.
-  const activeEmergency: 'help' | 'sos' | null =
+  // Активный статус текущего пользователя — по нему показываем поверх
+  // пейджера видимую плашку («SOS/HELP активен» или «Я катаю»). Так
+  // пользователь сразу видит, что состояние сохранено на сервере (и на
+  // карте его метка изменит цвет / получит подпись), плюс есть возможность
+  // отменить статус вручную.
+  const activeStatus: 'help' | 'sos' | 'riding' | null =
     user.emergency_status === 'help'
       ? 'help'
       : user.emergency_status === 'sos'
         ? 'sos'
-        : null
+        : user.emergency_status === 'riding'
+          ? 'riding'
+          : null
+
 
   const cancelEmergency = async () => {
     try {
@@ -224,19 +285,26 @@ export default function HomePage() {
 
   return (
     <div className="pager-bg">
-      {/* Плашка активного экстренного статуса — сразу видно, что сигнал
-          сохранён на сервере, и можно быстро отменить его. */}
-      {activeEmergency && (
+      {/* Плашка активного статуса — сразу видно, что сигнал (SOS/HELP)
+          сохранён на сервере, а также подтверждение включения режима
+          «Я катаю». Плашку можно быстро скрыть, отменив статус. */}
+      {activeStatus && (
         <div
-          className={`pager-emergency pager-emergency--${activeEmergency}`}
+          className={`pager-emergency pager-emergency--${activeStatus}`}
           role="status"
           aria-live="polite"
         >
           <div className="pager-emergency__title">
-            {activeEmergency === 'sos' ? '🚨 SOS активен' : '⚠️ HELP активен'}
+            {activeStatus === 'sos'
+              ? '🚨 SOS активен'
+              : activeStatus === 'help'
+                ? '⚠️ HELP активен'
+                : '🏍️ Я катаю (3 часа)'}
           </div>
           <div className="pager-emergency__text">
-            Ваша метка на карте отображается для других райдеров.
+            {activeStatus === 'riding'
+              ? 'Другие райдеры видят вас на мотокарте с подписью «КАТАЮ». Статус сбросится автоматически через 3 часа.'
+              : 'Ваша метка на карте отображается для других райдеров.'}
             <br />
             <Link to="/map" className="pager-emergency__link">
               Открыть карту →
@@ -247,10 +315,11 @@ export default function HomePage() {
             className="btn btn-sm btn-ghost pager-emergency__cancel"
             onClick={cancelEmergency}
           >
-            Отменить статус
+            {activeStatus === 'riding' ? 'Завершить поездку' : 'Отменить статус'}
           </button>
         </div>
       )}
+
 
       <div className="pager-bg__inner">
         {/* Сам пейджер — img, чтобы браузер держал соотношение сторон. */}

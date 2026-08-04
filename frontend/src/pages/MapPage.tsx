@@ -257,6 +257,16 @@ const STYLE_SOS: MarkerStyle = {
   yandexPreset: 'islands#redStretchyIcon',
   yandexIconColor: '#ef4444',
 }
+// «Я КАТАЮ» — активная поездка (3 часа). Зелёный «мото»-стиль, чтобы
+// на карте райдер был заметен как активно едущий, но НЕ путался с
+// экстренными статусами (SOS/HELP).
+const STYLE_RIDING: MarkerStyle = {
+  border: '#15803d',
+  fill: '#22c55e',
+  yandexPreset: 'islands#greenStretchyIcon',
+  yandexIconColor: '#22c55e',
+}
+
 
 
 function styleForRider(lastSeenIso: string): MarkerStyle {
@@ -278,19 +288,22 @@ export default function MapPage() {
   // соответствующей категории (SOS — красный, HELP — жёлтый) и
   // показывает постоянную подпись над меткой, чтобы автор точно видел,
   // что его сигнал зафиксирован.
-  const myEmergency: 'help' | 'sos' | null =
+  const myEmergency: 'help' | 'sos' | 'riding' | null =
     user?.emergency_status === 'help'
       ? 'help'
       : user?.emergency_status === 'sos'
         ? 'sos'
-        : null
+        : user?.emergency_status === 'riding'
+          ? 'riding'
+          : null
 
   // Ref для актуального значения myEmergency — используется внутри
   // callback'а applyFix, у которого иначе будет stale closure на
   // первоначальное значение из момента подписки. Без этого ref после
-  // нажатия SOS/HELP при следующем GPS-фиксе маркер перекрашивался
+  // нажатия SOS/HELP/RIDING при следующем GPS-фиксе маркер перекрашивался
   // бы обратно в обычный стиль.
-  const myEmergencyRef = useRef<'help' | 'sos' | null>(myEmergency)
+  const myEmergencyRef = useRef<'help' | 'sos' | 'riding' | null>(myEmergency)
+
   useEffect(() => {
     myEmergencyRef.current = myEmergency
   }, [myEmergency])
@@ -452,14 +465,27 @@ export default function MapPage() {
           ? STYLE_SOS
           : emergencyNow === 'help'
             ? STYLE_HELP
-            : STYLE_ME
+            : emergencyNow === 'riding'
+              ? STYLE_RIDING
+              : STYLE_ME
       const myBadge =
         emergencyNow === 'sos'
           ? 'SOS'
           : emergencyNow === 'help'
             ? 'HELP'
-            : null
+            : emergencyNow === 'riding'
+              ? 'КАТАЮ'
+              : null
+      const myBadgeCls =
+        emergencyNow === 'sos'
+          ? 'map-emergency-badge map-emergency-badge--sos'
+          : emergencyNow === 'help'
+            ? 'map-emergency-badge map-emergency-badge--help'
+            : emergencyNow === 'riding'
+              ? 'map-emergency-badge map-emergency-badge--riding'
+              : 'map-emergency-badge'
       const myTooltip = myBadge ? `${myBadge} · Вы здесь` : 'Вы здесь'
+
 
       if (USE_YANDEX) {
         const ymaps = window.ymaps
@@ -533,15 +559,15 @@ export default function MapPage() {
 
         if (!meMarkerRef.current) {
           // По ТЗ: собственный маркер — красный с белой обводкой в обычном
-          // режиме. При активном SOS/HELP перекрашиваем в цвет статуса
-          // и показываем постоянную подпись над меткой.
+          // режиме. При активном SOS/HELP/RIDING перекрашиваем в цвет
+          // статуса и показываем постоянную подпись над меткой.
           meMarkerRef.current = L.circleMarker(point, meOpts).addTo(map)
           if (myBadge) {
             meMarkerRef.current.bindTooltip(myTooltip, {
               direction: 'top',
               offset: [0, -8],
               permanent: true,
-              className: 'map-emergency-badge',
+              className: myBadgeCls,
             })
           } else {
             meMarkerRef.current.bindTooltip(myTooltip, {
@@ -564,7 +590,7 @@ export default function MapPage() {
               direction: 'top',
               offset: [0, -8],
               permanent: true,
-              className: 'map-emergency-badge',
+              className: myBadgeCls,
             })
           } else {
             meMarkerRef.current.bindTooltip(myTooltip, {
@@ -573,6 +599,7 @@ export default function MapPage() {
             })
           }
         }
+
 
         if (radius > 0) {
           if (!accuracyCircleRef.current) {
@@ -628,10 +655,27 @@ export default function MapPage() {
         ? STYLE_SOS
         : myEmergency === 'help'
           ? STYLE_HELP
-          : STYLE_ME
+          : myEmergency === 'riding'
+            ? STYLE_RIDING
+            : STYLE_ME
     const myBadge =
-      myEmergency === 'sos' ? 'SOS' : myEmergency === 'help' ? 'HELP' : null
+      myEmergency === 'sos'
+        ? 'SOS'
+        : myEmergency === 'help'
+          ? 'HELP'
+          : myEmergency === 'riding'
+            ? 'КАТАЮ'
+            : null
+    const myBadgeCls =
+      myEmergency === 'sos'
+        ? 'map-emergency-badge map-emergency-badge--sos'
+        : myEmergency === 'help'
+          ? 'map-emergency-badge map-emergency-badge--help'
+          : myEmergency === 'riding'
+            ? 'map-emergency-badge map-emergency-badge--riding'
+            : 'map-emergency-badge'
     const myTooltip = myBadge ? `${myBadge} · Вы здесь` : 'Вы здесь'
+
 
     if (USE_YANDEX) {
       try {
@@ -675,7 +719,7 @@ export default function MapPage() {
             direction: 'top',
             offset: [0, -8],
             permanent: true,
-            className: 'map-emergency-badge',
+            className: myBadgeCls,
           })
         } else {
           meMarker.bindTooltip(myTooltip, {
@@ -698,6 +742,7 @@ export default function MapPage() {
       }
     }
   }, [myEmergency, ready])
+
 
 
   // Периодически подгружаем последние координаты других райдеров
@@ -758,18 +803,33 @@ export default function MapPage() {
           ? 'HELP'
           : r.emergency_status === 'sos'
             ? 'SOS'
-            : null
+            : r.emergency_status === 'riding'
+              ? 'КАТАЮ'
+              : null
+      // CSS-модификатор для tooltip'а: sos/help/riding.
+      const badgeCls = badge
+        ? `map-emergency-badge map-emergency-badge--${
+            r.emergency_status === 'help'
+              ? 'help'
+              : r.emergency_status === 'sos'
+                ? 'sos'
+                : 'riding'
+          }`
+        : 'map-emergency-badge'
       const label = (badge ? `[${badge}] ` : '') + `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
       // Цвет метки зависит от времени последнего обновления координат.
-      // Экстренные статусы (help/sos) переопределяют стандартную раскраску.
+      // Экстренные статусы (help/sos/riding) переопределяют стандартную раскраску.
       let style: MarkerStyle
       if (r.emergency_status === 'help') {
         style = STYLE_HELP
       } else if (r.emergency_status === 'sos') {
         style = STYLE_SOS
+      } else if (r.emergency_status === 'riding') {
+        style = STYLE_RIDING
       } else {
         style = styleForRider(r.last_seen_at)
       }
+
 
       const existing = markers.get(r.id)
 
@@ -829,7 +889,7 @@ export default function MapPage() {
               direction: 'top',
               offset: [0, -8],
               permanent: true,
-              className: `map-emergency-badge map-emergency-badge--${badge.toLowerCase()}`,
+              className: badgeCls,
             })
           } else {
             marker.bindTooltip(label, {
@@ -838,6 +898,7 @@ export default function MapPage() {
             })
           }
           marker.bindPopup(label)
+
           markers.set(r.id, marker)
         } else {
           existing.setLatLng(point)
@@ -854,7 +915,7 @@ export default function MapPage() {
               direction: 'top',
               offset: [0, -8],
               permanent: true,
-              className: `map-emergency-badge map-emergency-badge--${badge.toLowerCase()}`,
+              className: badgeCls,
             })
           } else {
             existing.bindTooltip(label, {
@@ -863,6 +924,7 @@ export default function MapPage() {
             })
           }
           existing.setPopupContent(label)
+
         }
 
       }
