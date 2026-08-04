@@ -27,6 +27,12 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # URL аватарки (относительный: /media/avatars/…) — опционально.
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Значок спонсора проекта — произвольный эмодзи (или короткая строка),
+    # который админы выдают вручную после доната. Показывается рядом с
+    # username во всех местах, где отображается пользователь.
+    sponsor_badge: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, default=None
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )

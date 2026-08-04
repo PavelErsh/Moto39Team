@@ -71,6 +71,8 @@ class UserRead(BaseModel):
     is_active: bool
     is_superuser: bool
     avatar_url: str | None = None
+    # Значок спонсора проекта (эмодзи), если админ его выдал.
+    sponsor_badge: str | None = None
     created_at: datetime
     updated_at: datetime
     # Текущий экстренный статус пользователя (None / "help" / "sos").
@@ -92,6 +94,7 @@ class UserPublic(BaseModel):
     username: str
     full_name: str | None = None
     avatar_url: str | None = None
+    sponsor_badge: str | None = None
     is_active: bool = True
     created_at: datetime
     motorcycles: list[MotorcycleRead] = []
@@ -126,6 +129,7 @@ class UserLocation(BaseModel):
     username: str
     full_name: str | None = None
     avatar_url: str | None = None
+    sponsor_badge: str | None = None
     lat: float
     lng: float
     accuracy: float | None = None

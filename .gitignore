@@ -27,3 +27,6 @@ venv/
 
 # deploy
 deploy/deploy.env
+
+# локальный файл с DSN, использующийся при запуске alembic вне Docker
+sqlalchemy.url

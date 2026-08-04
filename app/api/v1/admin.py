@@ -1,6 +1,6 @@
 """Админские роуты: управление пользователями."""
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentSuperuser, DbSession
 from app.crud.user import user_crud
@@ -15,6 +15,12 @@ class AdminFlagPayload(BaseModel):
 
 class ActiveFlagPayload(BaseModel):
     is_active: bool
+
+
+class SponsorBadgePayload(BaseModel):
+    # Пустая строка (или None) — сброс значка. Ограничение в 16 символов
+    # позволяет вместить составные эмодзи с ZWJ/скин-тонами.
+    sponsor_badge: str | None = Field(default=None, max_length=16)
 
 
 @router.get(
@@ -82,6 +88,32 @@ async def set_active(
             detail="Нельзя деактивировать самого себя",
         )
     user.is_active = payload.is_active
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return UserRead.model_validate(user)
+
+
+@router.patch(
+    "/users/{user_id}/sponsor-badge",
+    response_model=UserRead,
+    summary="Установить/сбросить значок спонсора (только админ)",
+)
+async def set_sponsor_badge(
+    user_id: int,
+    payload: SponsorBadgePayload,
+    _: CurrentSuperuser,
+    db: DbSession,
+) -> UserRead:
+    user = await user_crud.get(db, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+    # Нормализуем: пустая строка после trim — сброс значка (NULL в БД).
+    raw = (payload.sponsor_badge or "").strip()
+    user.sponsor_badge = raw or None
     db.add(user)
     await db.commit()
     await db.refresh(user)

@@ -23,6 +23,7 @@ def _to_location(user) -> UserLocation:
         username=user.username,
         full_name=user.full_name,
         avatar_url=user.avatar_url,
+        sponsor_badge=getattr(user, "sponsor_badge", None),
         lat=user.last_lat,
         lng=user.last_lng,
         accuracy=user.last_accuracy,
