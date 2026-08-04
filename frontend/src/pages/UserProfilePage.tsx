@@ -98,7 +98,17 @@ export default function UserProfilePage() {
           <div className="avatar">{initial}</div>
         )}
         <div>
-          <h1 className="cabinet__name">{displayName}</h1>
+          <h1 className="cabinet__name">
+            {displayName}
+            {profile.sponsor_badge && (
+              <span
+                className="sponsor-badge"
+                title="Спонсор проекта"
+              >
+                {profile.sponsor_badge}
+              </span>
+            )}
+          </h1>
           <p className="muted">@{profile.username}</p>
           {lastSeenText && (
             <p className="muted rider-profile__seen">

@@ -6,6 +6,8 @@ export interface User {
   username: string
   full_name: string | null
   avatar_url: string | null
+  // Значок спонсора проекта (эмодзи), выданный админом. `null` — значка нет.
+  sponsor_badge?: string | null
   is_active: boolean
   is_superuser: boolean
   created_at: string

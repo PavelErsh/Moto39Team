@@ -76,6 +76,7 @@ export interface PublicUser {
   username: string
   full_name: string | null
   avatar_url: string | null
+  sponsor_badge?: string | null
   is_active?: boolean
   created_at: string
   motorcycles: Motorcycle[]
@@ -103,6 +104,7 @@ export interface UserLocation {
   username: string
   full_name: string | null
   avatar_url: string | null
+  sponsor_badge?: string | null
   lat: number
   lng: number
   accuracy: number | null

@@ -29,6 +29,7 @@ import {
 import {
   apiAdminListUsers,
   apiAdminSetActive,
+  apiAdminSetSponsorBadge,
   apiAdminSetSuperuser,
 } from '../api/admin'
 import {
@@ -459,6 +460,34 @@ export default function AdminPage() {
     setUsersError(null)
     try {
       const updated = await apiAdminSetActive(u.id, !u.is_active)
+      setUsers((list) => list.map((x) => (x.id === updated.id ? updated : x)))
+    } catch (err) {
+      setUsersError(extractApiError(err))
+    }
+  }
+
+  // Спрашиваем эмодзи-значок спонсора и сохраняем. Пустая строка = снять.
+  async function onEditSponsorBadge(u: User) {
+    setUsersError(null)
+    const current = u.sponsor_badge ?? ''
+    const next = window.prompt(
+      `Значок спонсора для @${u.username}\n` +
+        'Введите эмодзи (например: 💎, 🥇, ⭐).\n' +
+        'Оставьте поле пустым, чтобы снять значок.',
+      current,
+    )
+    // null — нажали «Отмена», ничего не делаем.
+    if (next === null) return
+    const trimmed = next.trim()
+    if (trimmed.length > 16) {
+      setUsersError('Значок слишком длинный (максимум 16 символов).')
+      return
+    }
+    try {
+      const updated = await apiAdminSetSponsorBadge(
+        u.id,
+        trimmed ? trimmed : null,
+      )
       setUsers((list) => list.map((x) => (x.id === updated.id ? updated : x)))
     } catch (err) {
       setUsersError(extractApiError(err))
@@ -1649,6 +1678,7 @@ export default function AdminPage() {
                     <th>Логин</th>
                     <th>Email</th>
                     <th>Имя</th>
+                    <th>Значок</th>
                     <th>Админ</th>
                     <th>Активен</th>
                     <th></th>
@@ -1665,6 +1695,18 @@ export default function AdminPage() {
                       </td>
                       <td>{u.email}</td>
                       <td>{u.full_name || '—'}</td>
+                      <td>
+                        {u.sponsor_badge ? (
+                          <span
+                            className="sponsor-badge"
+                            title="Значок спонсора проекта"
+                          >
+                            {u.sponsor_badge}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td>
                         {u.is_superuser ? (
                           <span className="badge badge-accent">админ</span>
@@ -1707,6 +1749,14 @@ export default function AdminPage() {
                           }
                         >
                           {u.is_active ? 'Заблокировать' : 'Разблокировать'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => onEditSponsorBadge(u)}
+                          title="Выдать/изменить значок спонсора проекта"
+                        >
+                          {u.sponsor_badge ? '💎 Значок' : '＋ Значок'}
                         </button>
                       </td>
                     </tr>

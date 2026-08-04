@@ -25,3 +25,16 @@ export async function apiAdminSetActive(
   })
   return res.data
 }
+
+// Установить/сбросить значок спонсора у пользователя.
+// Передаём пустую строку — на бэке нормализуется в NULL (снятие значка).
+export async function apiAdminSetSponsorBadge(
+  userId: number,
+  badge: string | null,
+): Promise<User> {
+  const res = await api.patch<User>(
+    `/admin/users/${userId}/sponsor-badge`,
+    { sponsor_badge: badge ?? '' },
+  )
+  return res.data
+}

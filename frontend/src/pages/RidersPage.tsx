@@ -134,6 +134,14 @@ export default function RidersPage() {
                 <div className="rider-card__body">
                   <div className="rider-card__name">
                     {u.full_name || u.username}
+                    {u.sponsor_badge && (
+                      <span
+                        className="sponsor-badge"
+                        title="Спонсор проекта"
+                      >
+                        {u.sponsor_badge}
+                      </span>
+                    )}
                   </div>
                   <div className="muted">@{u.username}</div>
                   <div className="rider-card__count">

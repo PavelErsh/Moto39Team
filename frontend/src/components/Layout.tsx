@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="site-header">
 
         <div className="container header-inner">
-          <Link to="/" className="logo" aria-label="MOTO39">
+          <Link to="/" className="logo" aria-label="MOTO39 — на главную">
             <img
               src="/logo.jpeg"
               alt=""
@@ -28,7 +28,10 @@ export default function Layout({ children }: { children: ReactNode }) {
               height={40}
               decoding="async"
             />
-            <span className="logo-text">MOTO39</span>
+            <span className="logo-textwrap">
+              <span className="logo-text">MOTO39</span>
+              <span className="logo-hint">на главную</span>
+            </span>
           </Link>
 
           <nav className="nav">

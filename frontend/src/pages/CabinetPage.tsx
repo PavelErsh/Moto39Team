@@ -142,7 +142,17 @@ export default function CabinetPage() {
           </div>
         </div>
         <div>
-          <h1 className="cabinet__name">{user.full_name || user.username}</h1>
+          <h1 className="cabinet__name">
+            {user.full_name || user.username}
+            {user.sponsor_badge && (
+              <span
+                className="sponsor-badge"
+                title="Спонсор проекта"
+              >
+                {user.sponsor_badge}
+              </span>
+            )}
+          </h1>
           <p className="muted">@{user.username}</p>
         </div>
         <div className="cabinet__actions">
