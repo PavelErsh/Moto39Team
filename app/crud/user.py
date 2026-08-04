@@ -135,9 +135,11 @@ class UserCRUD:
 
         При установке статуса записывает ``emergency_status_at``.
         Таймауты авто-сброса:
-          • sos  — 1 час,
-          • help — 2 часа.
+          • sos    — 1 час,
+          • help   — 2 часа,
+          • riding — 3 часа («я катаю»).
         """
+
         user.emergency_status = status
         user.emergency_status_at = (
             datetime.now(timezone.utc) if status else None
@@ -189,10 +191,15 @@ class UserCRUD:
             started = user.emergency_status_at
             if started.tzinfo is None:
                 started = started.replace(tzinfo=timezone.utc)
-            timeout = timedelta(
-                hours=1 if user.emergency_status == "sos" else 2
-            )
+            # sos → 1 час, help → 2 часа, riding → 3 часа.
+            if user.emergency_status == "sos":
+                timeout = timedelta(hours=1)
+            elif user.emergency_status == "riding":
+                timeout = timedelta(hours=3)
+            else:
+                timeout = timedelta(hours=2)
             if now - started > timeout:
+
                 try:
                     await db.execute(
                         update(User)
@@ -265,10 +272,17 @@ class UserCRUD:
         expired: list[User] = []
         for u in users:
             if u.emergency_status and u.emergency_status_at:
-                timeout = timedelta(
-                    hours=1 if u.emergency_status == 'sos' else 2
-                )
-                if now - u.emergency_status_at > timeout:
+                if u.emergency_status == 'sos':
+                    timeout = timedelta(hours=1)
+                elif u.emergency_status == 'riding':
+                    timeout = timedelta(hours=3)
+                else:
+                    timeout = timedelta(hours=2)
+                started_at = u.emergency_status_at
+                if started_at.tzinfo is None:
+                    started_at = started_at.replace(tzinfo=timezone.utc)
+                if now - started_at > timeout:
+
                     u.emergency_status = None
                     u.emergency_status_at = None
                     expired.append(u)

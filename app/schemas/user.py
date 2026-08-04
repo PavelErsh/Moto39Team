@@ -115,14 +115,21 @@ class LocationUpdate(BaseModel):
 
 
 class EmergencyStatusUpdate(BaseModel):
-    """Запрос на установку/сброс экстренного статуса."""
+    """Запрос на установку/сброс экстренного статуса.
+
+    Помимо экстренных значений ``help`` / ``sos`` поле принимает
+    значение ``riding`` — «я катаю». Это НЕ экстренный статус, а
+    маркер активной поездки: сбрасывается автоматически через 3 часа,
+    на карте райдер отображается зелёной меткой с подписью «КАТАЮ».
+    """
 
     emergency_status: str | None = Field(
-        default=None, pattern=r"^(help|sos|)$"
+        default=None, pattern=r"^(help|sos|riding|)$"
     )
 
 
 class UserLocation(BaseModel):
+
     """Публичная последняя позиция пользователя."""
 
     id: int
