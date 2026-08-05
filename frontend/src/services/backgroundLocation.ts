@@ -43,7 +43,8 @@ import { App as CapacitorApp } from '@capacitor/app'
 import type { PluginListenerHandle } from '@capacitor/core'
 
 import { API_BASE_URL, tokenStorage } from '../api/client'
-import { apiUpdateMyLocation } from '../api/motorcycles'
+import { apiClearMyLocation, apiUpdateMyLocation } from '../api/motorcycles'
+
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
   'BackgroundGeolocation',
@@ -73,6 +74,17 @@ const listeners = new Set<Listener>()
 
 /** Ключ в localStorage, где кешируем последнюю известную точку. */
 const LAST_FIX_KEY = 'moto39_last_location'
+/**
+ * Ключ в localStorage, где хранится пользовательское согласие на
+ * отслеживание геолокации. Значения:
+ *   • отсутствует / пусто — пользователь ещё не выбирал (по умолчанию
+ *     трекинг НЕ включён; ждём явной кнопки «Отслеживать меня»);
+ *   • "on"  — пользователь дал согласие, трекинг работает автоматически
+ *     при каждом входе;
+ *   • "off" — пользователь явно отказался; при логине сервис не стартует.
+ */
+const TRACKING_ENABLED_KEY = 'moto39_tracking_enabled'
+
 
 let nativeWatcherId: string | null = null
 let webWatchId: number | null = null
@@ -750,15 +762,131 @@ function detachWebLifecycleHandlers(): void {
 }
 
 /**
+ * Пользовательская настройка «отслеживать меня».
+ *
+ * Возвращает `true`, если пользователь ЯВНО дал согласие через кнопку
+ * «Отслеживать меня». По умолчанию (значение отсутствует, либо
+ * "off") — трекинг не запускается автоматически, метка на карте
+ * не появляется.
+ */
+export function isTrackingEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(TRACKING_ENABLED_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+/** Явно записать, дал ли пользователь согласие на трекинг. */
+function setTrackingPreference(value: 'on' | 'off'): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TRACKING_ENABLED_KEY, value)
+  } catch {
+    /* noop */
+  }
+}
+
+/**
+ * Спросить у браузера/ОС разрешение на геолокацию (единичный запрос).
+ * Возвращает `true`, если координата получена и разрешение подтверждено.
+ * Используется на веб-сборке, чтобы «выстрелить» окно permission-prompt
+ * до того, как watchPosition уйдёт в бесконечное ожидание.
+ */
+async function requestWebPermissionOnce(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+    return false
+  }
+  return new Promise<boolean>((resolve) => {
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords
+          if (
+            typeof latitude === 'number' &&
+            typeof longitude === 'number' &&
+            !Number.isNaN(latitude) &&
+            !Number.isNaN(longitude)
+          ) {
+            void handleFix(latitude, longitude, accuracy, { force: true })
+          }
+          resolve(true)
+        },
+        () => resolve(false),
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15_000,
+        },
+      )
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+/**
+ * Включить трекинг по явному согласию пользователя (кнопка
+ * «Отслеживать меня»). Сохраняет opt-in во флаг localStorage и
+ * поднимает watcher. Возвращает `true`, если разрешение получено
+ * и трекинг реально стартовал.
+ */
+export async function enableTracking(): Promise<boolean> {
+  setTrackingPreference('on')
+  if (!isNative()) {
+    const ok = await requestWebPermissionOnce()
+    if (!ok) {
+      // Пользователь отказал в системном диалоге — откатываем opt-in,
+      // чтобы UI показал кнопку «Отслеживать меня» снова.
+      setTrackingPreference('off')
+      return false
+    }
+  }
+  await startBackgroundLocation()
+  return true
+}
+
+/**
+ * Полностью выключить трекинг по явному желанию пользователя (кнопка
+ * «Не отслеживать меня»). Останавливает watcher, стирает кэши и
+ * отправляет DELETE /users/me/location, чтобы метка мгновенно
+ * исчезла у остальных райдеров.
+ */
+export async function disableTracking(): Promise<void> {
+  setTrackingPreference('off')
+  await stopBackgroundLocation()
+  try {
+    await apiClearMyLocation()
+  } catch {
+    // Сеть могла отвалиться — не критично: сервер сам не удалит,
+    // но и обновлять координаты уже некому. Метка «устареет» и
+    // покрасится в белый по правилу «больше 60 минут», а через 24
+    // часа фильтр в /users/locations её отрежет.
+  }
+}
+
+/**
  * Запускает трекинг. Безопасно вызывать несколько раз — повторный вызов
  * ничего не сломает, watcher создаётся только один раз.
+ *
+ * ВАЖНО: если пользователь ЯВНО отказался от трекинга (кнопка
+ * «Не отслеживать меня»), метод молча выходит — иначе AuthContext на
+ * каждом входе снова бы поднимал watcher вопреки желанию пользователя.
  */
 export async function startBackgroundLocation(): Promise<void> {
   // Прогружаем кеш заранее, чтобы `getLastFix()` работал сразу.
   if (!lastFix) lastFix = loadCachedFix()
 
+  if (!isTrackingEnabled()) {
+    // Пользователь не давал согласия — не поднимаем watcher, чтобы
+    // случайно не «утечь» координатой (и не мигать permission-prompt).
+    return
+  }
+
   if (started) return
   started = true
+
 
   // Синхронизируем конфиг для SW сразу — вдруг сеть отвалится ещё до
   // первого фикса, но у SW уже будет закэшированная точка с прошлой сессии.
@@ -807,7 +935,19 @@ export async function stopBackgroundLocation(): Promise<void> {
   await idbDelete('config')
   lastFix = null
   started = false
+  // Настройку «отслеживать меня» сбрасываем, чтобы следующий пользователь
+  // на этом устройстве явно принял/отклонил трекинг сам. Значение "off"
+  // не подходит — оно бы прятало приглашение включить трекинг у нового
+  // владельца сессии; поэтому просто удаляем ключ.
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(TRACKING_ENABLED_KEY)
+    } catch {
+      /* noop */
+    }
+  }
 }
+
 
 
 /** Открыть системные настройки приложения (только в нативной сборке). */

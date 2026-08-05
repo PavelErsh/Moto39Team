@@ -121,6 +121,16 @@ export async function apiUpdateMyLocation(payload: {
   return res.data
 }
 
+/**
+ * Убрать свою метку с общей карты. Полностью обнуляет last_lat/last_lng
+ * на бэкенде, поэтому у других райдеров пользователь мгновенно исчезает
+ * из списка `/users/locations`.
+ */
+export async function apiClearMyLocation(): Promise<void> {
+  await api.delete('/users/me/location')
+}
+
+
 export async function apiUpdateEmergencyStatus(
   emergency_status: string | null,
 ): Promise<UserLocation> {

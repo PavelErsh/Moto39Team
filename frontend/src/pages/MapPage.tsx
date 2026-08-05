@@ -4,11 +4,15 @@ import {
   type UserLocation,
 } from '../api/motorcycles'
 import {
+  disableTracking,
+  enableTracking,
   getLastFix,
+  isTrackingEnabled,
   startBackgroundLocation,
   subscribeLocation,
   type LocationFix,
 } from '../services/backgroundLocation'
+
 import InstallPwaHint from '../components/InstallPwaHint'
 import { useAuth } from '../context/AuthContext'
 
@@ -333,6 +337,14 @@ export default function MapPage() {
   const [, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [riders, setRiders] = useState<UserLocation[]>([])
+  // Активен ли фоновый трекинг геолокации. По ТЗ, пользователь должен
+  // явно нажать «Отслеживать меня» — тогда мы запрашиваем разрешение
+  // на геолокацию и начинаем отправлять координаты. Кнопка
+  // «Не отслеживать меня» останавливает сервис и удаляет собственную
+  // метку с карты (у себя и у остальных райдеров).
+  const [tracking, setTracking] = useState<boolean>(() => isTrackingEnabled())
+  const [trackingBusy, setTrackingBusy] = useState<boolean>(false)
+
 
   // Инициализация карты
   useEffect(() => {
@@ -942,6 +954,81 @@ export default function MapPage() {
     }
   }
 
+  /**
+   * Полностью убрать с карты собственную метку и круг погрешности.
+   * Вызываем при нажатии «Не отслеживать меня»: у самого пользователя
+   * должна исчезнуть красная точка (у остальных райдеров метку удалит
+   * бэкенд после DELETE /users/me/location).
+   */
+  const removeMyMarker = () => {
+    const map = mapRef.current
+    if (!map) return
+    if (meMarkerRef.current) {
+      try {
+        if (USE_YANDEX) {
+          map.geoObjects.remove(meMarkerRef.current)
+        } else {
+          meMarkerRef.current.remove()
+        }
+      } catch {
+        /* noop */
+      }
+      meMarkerRef.current = null
+    }
+    if (accuracyCircleRef.current) {
+      try {
+        if (USE_YANDEX) {
+          map.geoObjects.remove(accuracyCircleRef.current)
+        } else {
+          accuracyCircleRef.current.remove()
+        }
+      } catch {
+        /* noop */
+      }
+      accuracyCircleRef.current = null
+    }
+    // Сбрасываем «первичный центр» — при повторном включении трекинга
+    // карта снова аккуратно центрируется на пользователе.
+    firstFixAppliedRef.current = false
+    setCoords(null)
+  }
+
+  const handleEnableTracking = async () => {
+    if (trackingBusy) return
+    setTrackingBusy(true)
+    try {
+      const ok = await enableTracking()
+      if (ok) {
+        setTracking(true)
+      } else {
+        // Пользователь отказал в системном permission-prompt —
+        // оставляем `tracking = false` и подсказываем ему, как исправить.
+        setTracking(false)
+        window.alert(
+          'Не удалось получить разрешение на геолокацию. Проверьте ' +
+            'настройки браузера/системы и попробуйте снова.',
+        )
+      }
+    } finally {
+      setTrackingBusy(false)
+    }
+  }
+
+  const handleDisableTracking = async () => {
+    if (trackingBusy) return
+    setTrackingBusy(true)
+    try {
+      await disableTracking()
+      setTracking(false)
+      // Метка на карте у себя должна исчезнуть мгновенно; у остальных —
+      // при следующем опросе /users/locations (DELETE уже улетел).
+      removeMyMarker()
+    } finally {
+      setTrackingBusy(false)
+    }
+  }
+
+
   return (
     <div className="map-page">
       <InstallPwaHint />
@@ -991,16 +1078,47 @@ export default function MapPage() {
             </li>
           </ul>
 
+          {/*
+            Кнопки согласия на геолокацию. По ТЗ пользователь должен
+            явно нажать «Отслеживать меня» — только после этого
+            запрашиваем permission у ОС/браузера и запускаем фоновой
+            трекер. «Не отслеживать меня» останавливает сервис,
+            удаляет собственную метку с карты и снимает координаты
+            на сервере, чтобы у остальных райдеров она тоже пропала.
+          */}
+          {tracking ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm map-tracking-btn map-tracking-btn--off"
+              onClick={handleDisableTracking}
+              disabled={trackingBusy}
+              title="Скрыть свою позицию — метка исчезнет и у вас, и у остальных райдеров"
+            >
+              {trackingBusy ? 'Выключаем…' : 'Не отслеживать меня'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm map-tracking-btn map-tracking-btn--on"
+              onClick={handleEnableTracking}
+              disabled={trackingBusy}
+              title="Запросить у устройства доступ к геолокации и показать вашу метку на карте"
+            >
+              {trackingBusy ? 'Запрашиваем…' : 'Отслеживать меня'}
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-primary btn-sm"
             onClick={centerOnMe}
-            disabled={!coords}
+            disabled={!coords || !tracking}
           >
             Я здесь
           </button>
         </div>
       </div>
+
 
       <div className="map-wrap">
         <div ref={mapContainerRef} className="map-canvas" />
