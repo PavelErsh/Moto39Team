@@ -81,7 +81,16 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {!hideHeader && (
         <footer className="site-footer">
-          <div className="container">MOTO39</div>
+          <div className="container">
+            MOTO39
+            {' · '}
+            <Link
+              to="/legal"
+              style={{ color: 'inherit', textDecoration: 'underline' }}
+            >
+              Пользовательское соглашение и Политика ПДн
+            </Link>
+          </div>
         </footer>
       )}
     </div>

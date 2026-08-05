@@ -1,19 +1,31 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { apiAuthConfig, type AuthConfig } from '../api/auth'
 import { extractApiError } from '../api/client'
+import LegalContent, { LEGAL_VERSION } from '../components/LegalContent'
 import TurnstileWidget from '../components/TurnstileWidget'
 import { useAuth } from '../context/AuthContext'
 
 /**
  * Двухэтапная регистрация.
  *
- * Шаг 1 (`form`): вводим email/логин/пароль и (если бэк требует)
- *   проходим капчу Cloudflare Turnstile. Отправляем на /auth/register —
- *   бэкенд шлёт код подтверждения на email.
+ * Шаг 1 (`form`): вводим email/логин/пароль, читаем большое
+ *   пользовательское соглашение (см. `LegalContent`) в прокручиваемом
+ *   блоке и подтверждаем три чекбокса:
+ *     1) согласие с условиями Соглашения и Политики;
+ *     2) согласие на обработку персональных данных (ФЗ-152);
+ *     3) подтверждение возраста 18+ и полной дееспособности.
+ *   Также (если бэк требует) проходим капчу Cloudflare Turnstile.
+ *   Отправляем на /auth/register — бэкенд шлёт код подтверждения.
  *
  * Шаг 2 (`verify`): вводим код из письма, отправляем на
  *   /auth/verify-email — бэкенд создаёт пользователя и логинит нас.
+ *
+ * ВАЖНО: чекбоксы соглашения — часть механизма защиты владельцев
+ * сервиса от жалоб клиентов. Пользователь физически не может отправить
+ * форму без явного и осознанного подтверждения — это подтверждает
+ * акцепт публичной оферты (ст. 438 ГК РФ) и согласие на обработку
+ * персональных данных (ст. 9 ФЗ-152).
  */
 export default function RegisterPage() {
   const { user, registerStart, verifyEmail, resendCode } = useAuth()
@@ -29,6 +41,16 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+
+  // --- Согласия
+  const [agreeTerms, setAgreeTerms] = useState(false)
+  const [agreePdn, setAgreePdn] = useState(false)
+  const [agreeAge, setAgreeAge] = useState(false)
+  // Пользователь должен «доскроллить» соглашение хотя бы до низа —
+  // это распространённая практика: чекбоксы разблокируются только
+  // после демонстрации, что текст был показан целиком.
+  const [scrolledToEnd, setScrolledToEnd] = useState(false)
+  const legalBoxRef = useRef<HTMLDivElement | null>(null)
 
   // --- Форма шага 2
   const [code, setCode] = useState('')
@@ -63,6 +85,25 @@ export default function RegisterPage() {
     return () => clearInterval(t)
   }, [resendCooldown])
 
+  // Отслеживаем скролл блока соглашения: как только пользователь
+  // добрался почти до низа (буфер 24 px, чтобы работало и с
+  // округлением/зумом), считаем условие «прочитано» выполненным.
+  useEffect(() => {
+    const el = legalBoxRef.current
+    if (!el) return
+    const onScroll = () => {
+      const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+      if (remaining <= 24) setScrolledToEnd(true)
+    }
+    // Если текст короче окна (например, зум/большой экран) — сразу
+    // засчитываем прочтение.
+    if (el.scrollHeight <= el.clientHeight + 24) {
+      setScrolledToEnd(true)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [step])
+
   if (user) {
     return <Navigate to="/cabinet" replace />
   }
@@ -76,11 +117,20 @@ export default function RegisterPage() {
   const emailVerificationEnabled =
     config?.email_verification_enabled ?? true
 
+  const allAgreed = agreeTerms && agreePdn && agreeAge
+
   async function onSubmitForm(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setInfo(null)
 
+    if (!allAgreed) {
+      setError(
+        'Чтобы продолжить, подтвердите пользовательское соглашение, ' +
+          'согласие на обработку персональных данных и своё совершеннолетие.',
+      )
+      return
+    }
     if (password !== passwordConfirm) {
       setError('Пароли не совпадают')
       return
@@ -227,7 +277,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <section className="auth-card">
+    <section className="auth-card auth-card--wide">
       <h1>Вступить</h1>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -294,6 +344,103 @@ export default function RegisterPage() {
           />
         </label>
 
+        {/* -------------------------------------------------------
+            Пользовательское соглашение и Политика ПДн.
+            Показываем полный текст в прокручиваемом блоке. Пока
+            пользователь не докрутит его до конца — чекбоксы
+            остаются выключенными (см. `scrolledToEnd`).
+            ------------------------------------------------------- */}
+        <div className="legal-block">
+          <div className="legal-block__head">
+            <h2 className="legal-block__title">
+              Пользовательское соглашение и Политика обработки
+              персональных данных
+            </h2>
+            <span className="legal-block__badge">
+              Редакция {LEGAL_VERSION}
+            </span>
+          </div>
+          <p className="legal-block__hint">
+            Пожалуйста, внимательно прочитайте документ ниже до конца.
+            Кнопки согласия станут активными, когда вы прокрутите
+            текст до конца. Полную версию можно открыть на отдельной
+            странице:{' '}
+            <Link to="/legal" target="_blank" rel="noopener">
+              /legal ↗
+            </Link>
+            .
+          </p>
+
+          <div
+            ref={legalBoxRef}
+            className={
+              'legal-block__scroll' +
+              (scrolledToEnd ? ' legal-block__scroll--read' : '')
+            }
+            tabIndex={0}
+            aria-label="Пользовательское соглашение"
+          >
+            <LegalContent hideTitle />
+          </div>
+
+          {!scrolledToEnd && (
+            <p className="legal-block__scroll-hint">
+              ↓ Прокрутите текст до конца, чтобы активировать
+              подтверждение
+            </p>
+          )}
+
+          <div className="legal-block__checks">
+            <label className="legal-check">
+              <input
+                type="checkbox"
+                checked={agreeTerms}
+                onChange={(e) => setAgreeTerms(e.target.checked)}
+                disabled={busy || !scrolledToEnd}
+              />
+              <span>
+                Я прочитал(а) и принимаю{' '}
+                <Link to="/legal" target="_blank" rel="noopener">
+                  Пользовательское соглашение
+                </Link>{' '}
+                сервиса «Мото39Team» в полном объёме.
+              </span>
+            </label>
+
+            <label className="legal-check">
+              <input
+                type="checkbox"
+                checked={agreePdn}
+                onChange={(e) => setAgreePdn(e.target.checked)}
+                disabled={busy || !scrolledToEnd}
+              />
+              <span>
+                Даю согласие на обработку моих{' '}
+                <Link to="/legal" target="_blank" rel="noopener">
+                  персональных данных
+                </Link>{' '}
+                в соответствии с ФЗ&nbsp;№&nbsp;152-ФЗ «О персональных
+                данных» на условиях, описанных в Политике.
+              </span>
+            </label>
+
+            <label className="legal-check">
+              <input
+                type="checkbox"
+                checked={agreeAge}
+                onChange={(e) => setAgreeAge(e.target.checked)}
+                disabled={busy || !scrolledToEnd}
+              />
+              <span>
+                Подтверждаю, что мне исполнилось <b>18 лет</b>, я
+                обладаю полной дееспособностью и понимаю, что
+                мотоциклетное движение является источником повышенной
+                опасности. Использую Сервис на свой страх и риск.
+              </span>
+            </label>
+          </div>
+        </div>
+
         {turnstileEnabled && turnstileSiteKey && (
           <div className="field">
             <TurnstileWidget
@@ -311,7 +458,7 @@ export default function RegisterPage() {
         <button
           type="submit"
           className="btn btn-primary btn-block btn-lg"
-          disabled={busy}
+          disabled={busy || !allAgreed}
         >
           {busy
             ? 'Отправляем…'

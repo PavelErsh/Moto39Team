@@ -2874,3 +2874,284 @@ html.low-end .nav-user:hover {
   vertical-align: middle;
   user-select: none;
 }
+
+/* =========================================================
+   Пользовательское соглашение / Политика ПДн
+   =========================================================
+   Используется в двух местах:
+   - на странице /register внутри `.legal-block` (скролл-бокс
+     + чекбоксы согласия);
+   - на публичной странице /legal (`.legal-page`) в виде
+     статьи.
+   Тексту нужно быть читаемым, поэтому здесь ослабляем
+   агрессивную стилистику проекта: белый спокойный текст,
+   умеренные отступы, чёткие маркеры списков.
+   ========================================================= */
+
+.legal-content h1 {
+  font-family: var(--font-head);
+  font-size: clamp(24px, 3.6vw, 34px);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.legal-content h2 {
+  font-family: var(--font-head);
+  font-size: clamp(17px, 2.2vw, 20px);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin: 22px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.legal-content p {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+.legal-content ul {
+  margin: 4px 0 12px;
+  padding-left: 22px;
+  color: var(--ink-soft);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+.legal-content ul li {
+  margin: 3px 0;
+}
+.legal-content b {
+  color: var(--text);
+}
+.legal-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+.legal-content a:hover {
+  color: var(--accent-2);
+}
+.legal-content .legal-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+.legal-content .legal-lead {
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+.legal-content .legal-tail {
+  margin-top: 24px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-hot);
+  border-radius: var(--radius);
+  background: rgba(57, 255, 20, 0.04);
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* --- Публичная страница /legal ------------------------------------- */
+.legal-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 8px 16px 48px;
+}
+.legal-page__back {
+  margin: 8px 0 6px;
+}
+.legal-page__card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: clamp(16px, 3vw, 32px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* --- Более широкая карточка регистрации, чтобы влезал текст ---- */
+.auth-card.auth-card--wide {
+  max-width: 720px;
+}
+
+/* --- Блок соглашения внутри формы регистрации ---------------------- */
+.legal-block {
+  margin: 8px 0 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.015);
+}
+.legal-block__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.legal-block__title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: clamp(16px, 2.4vw, 20px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.legal-block__badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.legal-block__hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.legal-block__hint a {
+  color: var(--accent);
+}
+
+/*
+  Собственно прокручиваемый бокс с текстом соглашения.
+  Ограничен по высоте, чтобы форма регистрации не превращалась
+  в бесконечное полотно. Показываем градиент-«fade» снизу, пока
+  пользователь не докрутил до конца (класс `--read`).
+*/
+.legal-block__scroll {
+  position: relative;
+  max-height: clamp(240px, 42vh, 380px);
+  overflow-y: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border-hot);
+  border-radius: var(--radius);
+  background: #0a0d0a;
+  /* Плавная инерция скролла на iOS */
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  outline: none;
+}
+.legal-block__scroll:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(57, 255, 20, 0.25);
+}
+/* Fade-градиент снизу — «намёк», что можно скроллить дальше. */
+.legal-block__scroll::after {
+  content: '';
+  position: sticky;
+  display: block;
+  bottom: -14px;
+  left: 0;
+  right: 0;
+  height: 40px;
+  margin: -40px -16px 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 13, 10, 0),
+    rgba(10, 13, 10, 0.9)
+  );
+  transition: opacity 0.25s ease;
+  opacity: 1;
+}
+.legal-block__scroll--read::after {
+  opacity: 0;
+}
+.legal-block__scroll-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--accent-2);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Красивая полоса прокрутки в бокce соглашения (webkit). */
+.legal-block__scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.legal-block__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.legal-block__scroll::-webkit-scrollbar-thumb {
+  background: var(--border-hot);
+  border-radius: 4px;
+}
+.legal-block__scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}
+
+/* --- Чекбоксы согласия --- */
+.legal-block__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.legal-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.01);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.legal-check:hover {
+  border-color: var(--border-hot);
+}
+.legal-check input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.legal-check input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+.legal-check input[type='checkbox']:disabled + span {
+  opacity: 0.55;
+}
+.legal-check:has(input:checked) {
+  border-color: var(--accent-dim);
+  background: rgba(57, 255, 20, 0.04);
+}
+.legal-check span a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .auth-card.auth-card--wide {
+    max-width: 100%;
+  }
+  .legal-block {
+    padding: 10px;
+  }
+  .legal-block__scroll {
+    padding: 12px 12px;
+    max-height: 46vh;
+  }
+  .legal-content h2 {
+    font-size: 15px;
+  }
+  .legal-content p,
+  .legal-content ul {
+    font-size: 13.5px;
+  }
+}

@@ -29,6 +29,7 @@ const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const ReferencesPage = lazy(() => import('./pages/ReferencesPage'))
 const ReferenceDetailPage = lazy(() => import('./pages/ReferenceDetailPage'))
+const LegalPage = lazy(() => import('./pages/LegalPage'))
 
 function PageFallback() {
   return (
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="/calendar/:id" element={<EventDetailPage />} />
           <Route path="/reference" element={<ReferencesPage />} />
           <Route path="/reference/:slug" element={<ReferenceDetailPage />} />
+          <Route path="/legal" element={<LegalPage />} />
           <Route
             path="/admin"
             element={
