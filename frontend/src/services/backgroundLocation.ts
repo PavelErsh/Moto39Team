@@ -790,14 +790,75 @@ function setTrackingPreference(value: 'on' | 'off'): void {
 
 /**
  * Спросить у браузера/ОС разрешение на геолокацию (единичный запрос).
- * Возвращает `true`, если координата получена и разрешение подтверждено.
- * Используется на веб-сборке, чтобы «выстрелить» окно permission-prompt
- * до того, как watchPosition уйдёт в бесконечное ожидание.
+ * Возвращает `true`, если разрешение подтверждено (даже если GPS-фикс
+ * ещё не получен — watcher доберёт его позже). Используется на веб-
+ * сборке, чтобы «выстрелить» окно permission-prompt до того, как
+ * watchPosition уйдёт в бесконечное ожидание.
+ *
+ * ВАЖНО: при повторном включении трекинга (после «Не отслеживать меня»)
+ * разрешение уже могло быть выдано — тогда `getCurrentPosition` не
+ * должен блокировать процесс на весь свой таймаут (15 с). Мы сначала
+ * проверяем permission через Permissions API: если он уже `granted`,
+ * возвращаем `true` немедленно и лишь фоном пытаемся получить первый
+ * фикс (чтобы у пользователя быстрее появилась метка на карте).
  */
 async function requestWebPermissionOnce(): Promise<boolean> {
   if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
     return false
   }
+
+  // 1) Быстрый путь: если permission уже granted — не ждём GPS-фикса.
+  //    Иначе повторное «Отслеживать меня» после «Не отслеживать меня»
+  //    подвисает на 15 сек и в помещении/при слабом GPS отваливается
+  //    по таймауту, из-за чего enableTracking возвращает false и UI
+  //    считает, что трекинг не включён.
+  try {
+    if ('permissions' in navigator) {
+      const perms = navigator.permissions as unknown as {
+        query: (d: { name: string }) => Promise<PermissionStatus>
+      }
+      const status = await perms.query({ name: 'geolocation' })
+      if (status.state === 'granted') {
+        // Фоново попробуем получить свежую точку — но результата не
+        // ждём, разрешение уже подтверждено.
+        try {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude, accuracy } = pos.coords
+              if (
+                typeof latitude === 'number' &&
+                typeof longitude === 'number' &&
+                !Number.isNaN(latitude) &&
+                !Number.isNaN(longitude)
+              ) {
+                void handleFix(latitude, longitude, accuracy, { force: true })
+              }
+            },
+            () => {
+              /* noop */
+            },
+            {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 30_000,
+            },
+          )
+        } catch {
+          /* noop */
+        }
+        return true
+      }
+      if (status.state === 'denied') {
+        return false
+      }
+      // status.state === 'prompt' — падаем в общий путь ниже, чтобы
+      // getCurrentPosition спровоцировал системный диалог.
+    }
+  } catch {
+    // Permissions API недоступен (Safari <16 и т.п.) — идём общим путём.
+  }
+
+  // 2) Общий путь: спрашиваем разрешение через getCurrentPosition.
   return new Promise<boolean>((resolve) => {
     try {
       navigator.geolocation.getCurrentPosition(
@@ -813,7 +874,18 @@ async function requestWebPermissionOnce(): Promise<boolean> {
           }
           resolve(true)
         },
-        () => resolve(false),
+        (err) => {
+          // PERMISSION_DENIED (=1) — точно отказ. Всё остальное
+          // (POSITION_UNAVAILABLE, TIMEOUT) означает, что разрешение
+          // могло быть дано, но GPS-фикс не пришёл. В этом случае
+          // трекинг всё равно нужно включить: watcher доберёт фикс,
+          // когда сигнал появится.
+          if (err && err.code === 1) {
+            resolve(false)
+          } else {
+            resolve(true)
+          }
+        },
         {
           enableHighAccuracy: true,
           maximumAge: 0,
