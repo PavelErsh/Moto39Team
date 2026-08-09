@@ -10,6 +10,7 @@ from app.schemas.reference import (
     ReferenceRead,
     ReferenceUpdate,
 )
+from app.schemas.ride import RideCreate, RideRead, RideUpdate
 from app.schemas.token import RefreshTokenRequest, Token, TokenPayload
 from app.schemas.user import (
     UserCreate,
@@ -34,6 +35,9 @@ __all__ = [
     "EventCreate",
     "EventRead",
     "EventUpdate",
+    "RideCreate",
+    "RideRead",
+    "RideUpdate",
     "ReferenceCreate",
     "ReferenceRead",
     "ReferenceUpdate",

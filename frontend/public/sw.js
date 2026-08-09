@@ -190,6 +190,74 @@ self.addEventListener('fetch', (event) => {
 })
 
 // -----------------------------------------------------------------------------
+// Push-уведомления (Web Push API)
+// -----------------------------------------------------------------------------
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  let payload
+  try {
+    payload = event.data.json()
+  } catch {
+    // Не JSON — не показываем
+    return
+  }
+
+  const title = payload.title || 'MOTO39'
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/icon-192.png',
+    badge: payload.badge || '/icon-192.png',
+    tag: payload.tag || '',
+    data: payload.data || {},
+    requireInteraction: false,
+    vibrate: [200, 100, 200],
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(title, options),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const url = event.notification.data?.url || '/'
+  const roomId = event.notification.data?.room_id
+
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+
+      // Если уже есть открытая вкладка — сфокусироваться на ней
+      for (const client of clients) {
+        if ('focus' in client) {
+          await client.focus()
+          // Отправляем сообщение чтобы приложение перешло в нужный чат
+          if (roomId) {
+            client.postMessage({
+              type: 'navigate-chat',
+              roomId,
+            })
+          }
+          return
+        }
+      }
+
+      // Иначе — открыть новую вкладку
+      if (self.clients.openWindow) {
+        const targetUrl = roomId ? `/chat?room=${roomId}` : url
+        await self.clients.openWindow(targetUrl)
+      }
+    })(),
+  )
+})
+
+// -----------------------------------------------------------------------------
 // Отправка последней сохранённой координаты на бэкенд.
 // -----------------------------------------------------------------------------
 
