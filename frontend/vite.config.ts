@@ -47,6 +47,10 @@ export default defineConfig({
           axios: ['axios'],
         },
       },
+      // @capacitor/local-notifications доступен только в нативных сборках
+      // (Android/iOS); при веб-сборке динамический import() падает.
+      // external исключает модуль из бандла — catch в коде его перехватит.
+      external: ['@capacitor/local-notifications'],
     },
     // Для слабых устройств важнее размер, чем скорость сборки.
     cssCodeSplit: true,
