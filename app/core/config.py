@@ -95,6 +95,11 @@ class Settings(BaseSettings):
         "https://challenges.cloudflare.com/turnstile/v0/siteverify"
     )
 
+    # ---------------------------------------------------------------
+    # Redis (чат и Pub/Sub)
+    # ---------------------------------------------------------------
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def _normalize_cors(cls, v: object) -> str:

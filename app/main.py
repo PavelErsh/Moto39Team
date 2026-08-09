@@ -1,4 +1,6 @@
 """Точка входа FastAPI-приложения (чистый REST API для React-фронтенда)."""
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,6 +10,26 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.config import settings
 from app.db import base_all  # noqa: F401  # регистрирует все модели
+from app.services.ws_manager import close_redis, init_redis
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Инициализация и очистка ресурсов при старте/остановке приложения."""
+    # Инициализация Redis Pub/Sub (для чата)
+    try:
+        await init_redis(settings.REDIS_URL)
+        logger.info("Redis Pub/Sub initialized")
+    except Exception:
+        logger.warning("Redis not available — chat will use in-process messaging")
+    yield
+    # Очистка
+    try:
+        await close_redis()
+    except Exception:
+        pass
 
 
 def create_app() -> FastAPI:
@@ -18,6 +40,7 @@ def create_app() -> FastAPI:
             "REST API для Moto39Team. Авторизация — JWT (Bearer). "
             "Схема БД управляется через Alembic (см. `migrations/`)."
         ),
+        lifespan=lifespan,
     )
 
     # CORS для React dev-сервера (Vite: 5173/5174/5175 и т.п.)

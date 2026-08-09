@@ -137,6 +137,27 @@ async def update_my_location(
     return _to_location(user)
 
 
+@router.delete(
+    "/me/location",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить свою метку с карты (отключить трекинг)",
+)
+async def clear_my_location(
+    current_user: CurrentActiveUser,
+    db: DbSession,
+) -> None:
+    """Пользователь нажал «Не отслеживать меня».
+
+    Обнуляем ``last_lat`` / ``last_lng`` / ``last_accuracy`` в БД,
+    чтобы у других райдеров метка сразу пропала (эндпоинт
+    ``/users/locations`` фильтрует по IS NOT NULL). Также
+    сбрасываем активный emergency_status — без координат он
+    не имеет смысла.
+    """
+    await user_crud.clear_location(db, current_user)
+    return None
+
+
 @router.post(
     "/me/emergency",
     response_model=UserLocation,

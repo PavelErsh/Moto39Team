@@ -125,6 +125,32 @@ class UserCRUD:
         await db.refresh(user)
         return user
 
+    async def clear_location(
+        self,
+        db: AsyncSession,
+        user: User,
+    ) -> User:
+        """Полностью удалить координаты пользователя из БД.
+
+        Используется, когда пользователь нажал «Не отслеживать меня» —
+        нам нужно, чтобы его метка мгновенно пропала с карты у всех
+        остальных райдеров. Просто занулить last_lat / last_lng
+        достаточно: /users/locations фильтрует по IS NOT NULL.
+        """
+        user.last_lat = None
+        user.last_lng = None
+        user.last_accuracy = None
+        # last_seen_at не трогаем — «когда последний раз был онлайн»
+        # это отдельная метрика и может обновляться touch_last_seen.
+        # Экстренный статус — сбрасываем: без координат он бессмыслен.
+        user.emergency_status = None
+        user.emergency_status_at = None
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+
     async def update_emergency_status(
         self,
         db: AsyncSession,
