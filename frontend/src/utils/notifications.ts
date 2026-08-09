@@ -17,8 +17,10 @@ let LocalNotifications: any = null
 async function initCapacitor() {
   if (LocalNotifications !== null) return // уже инициализировано
   try {
-    // @ts-ignore — @capacitor/local-notifications может отсутствовать при веб-сборке
-    const mod = await import('@capacitor/local-notifications')
+    // используем eval-подобный подход чтобы Vite не пытался разрешить импорт
+    const mod = await new Function(
+      'return import("@capacitor/local-notifications")',
+    )()
     LocalNotifications = mod.LocalNotifications
     capacitorAvailable = true
     // Запрашиваем разрешение один раз

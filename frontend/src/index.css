@@ -3233,6 +3233,15 @@ html.low-end .nav-user:hover {
   gap: 20px;
   max-width: 780px;
   margin: 0 auto;
+  /* Занимаем всю доступную высоту внутри main, чтобы
+     conversation мог растянуться на flex:1 */
+  height: 100%;
+}
+
+/* Когда на странице чата — убираем лишние отступы у main,
+   чтобы поле ввода было ближе к клавиатуре на мобильных */
+body:has(.chat-page) .main {
+  padding-bottom: 0;
 }
 
 .chat-page__head {
@@ -3385,8 +3394,11 @@ html.low-end .nav-user:hover {
 .chat-conversation {
   display: flex;
   flex-direction: column;
+  /* fallback для браузеров без поддержки dvh */
   height: calc(100vh - 200px);
-  min-height: 480px;
+  /* Используем dvh чтобы клавиатура не перекрывала поле ввода */
+  height: calc(100dvh - 200px);
+  min-height: 400px;
 }
 
 .chat-conversation__head {

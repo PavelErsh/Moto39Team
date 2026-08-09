@@ -13,6 +13,10 @@ export default function Layout({ children }: { children: ReactNode }) {
   // разложен по кнопкам пейджера, а лишний header ломает визуал макета.
   const hideHeader = user != null && location.pathname === '/'
 
+  // На странице чата скрываем футер с пользовательским соглашением —
+  // он мешает при наборе текста на мобильных устройствах.
+  const hideFooter = location.pathname.startsWith('/chat')
+
   return (
     <div className={`app-shell${hideHeader ? ' app-shell--no-header' : ''}`}>
       {!hideHeader && (
@@ -79,7 +83,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <div className="container">{children}</div>
       </main>
 
-      {!hideHeader && (
+      {!hideHeader && !hideFooter && (
         <footer className="site-footer">
           <div className="container">
             MOTO39
