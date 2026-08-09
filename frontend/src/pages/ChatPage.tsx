@@ -110,6 +110,7 @@ export default function ChatPage() {
       return
     }
     const delay = Math.min(1000 * Math.pow(2, wsRetryCount - 1), 16000)
+    console.log('WS: connecting in', delay, 'ms')
 
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
