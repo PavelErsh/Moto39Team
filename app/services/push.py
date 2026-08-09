@@ -59,8 +59,17 @@ class PushService:
             from cryptography.hazmat.primitives.asymmetric import ec
             from base64 import urlsafe_b64encode
 
-            private = serialization.load_pem_private_key(
-                self._vapid_private_key.encode(),
+            from base64 import urlsafe_b64decode
+
+            # Ключ хранится в формате URL-safe base64(DER).
+            # Именно так его генерируют deploy/*.sh скрипты.
+            key_bytes = self._vapid_private_key.encode()
+            padding_needed = 4 - len(self._vapid_private_key) % 4
+            if padding_needed != 4:
+                key_bytes += b"=" * padding_needed
+            der_bytes = urlsafe_b64decode(key_bytes)
+            private = serialization.load_der_private_key(
+                der_bytes,
                 password=None,
             )
             if not isinstance(private, ec.EllipticCurvePrivateKey):

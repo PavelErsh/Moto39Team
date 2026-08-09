@@ -20,7 +20,14 @@ router = APIRouter(prefix="/push", tags=["push"])
 @router.get("/vapid-public-key")
 async def get_vapid_public_key() -> dict:
     """Получить VAPID public key для фронтенда."""
-    return {"key": push_service.vapid_public_key}
+    key = push_service.vapid_public_key
+    if not key:
+        logger.warning(
+            "VAPID public key пуст — push-уведомления не будут работать. "
+            "Убедитесь, что VAPID_PRIVATE_KEY задан в .env "
+            "и имеет корректный формат."
+        )
+    return {"key": key}
 
 
 @router.post("/subscribe", status_code=201)
