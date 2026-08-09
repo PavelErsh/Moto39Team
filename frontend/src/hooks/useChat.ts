@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { tokenStorage } from '../api/client'
 import { apiGetMessages, apiListRooms, apiMarkRead } from '../api/chat'
 import type { ChatRoomItem, MessageItem, UnreadCounts } from '../api/chat'
 import { notify } from '../utils/notifications'
@@ -17,7 +17,6 @@ export interface ChatState {
 }
 
 export function useChat() {
-  const { token } = useAuth()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -66,6 +65,7 @@ export function useChat() {
   // ── WebSocket ─────────────────────────────────────────────────
 
   const connectWs = useCallback(() => {
+    const token = tokenStorage.getAccess()
     if (!token) return
 
     const ws = new WebSocket(`${WS_BASE}/api/v1/chat/ws`)
@@ -143,7 +143,7 @@ export function useChat() {
     ws.onerror = () => {
       ws.close()
     }
-  }, [token, activeRoomId])
+  }, [activeRoomId])
 
   // Подключение/отключение WebSocket
   useEffect(() => {

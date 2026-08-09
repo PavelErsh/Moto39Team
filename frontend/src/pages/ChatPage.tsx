@@ -11,7 +11,6 @@ import {
   apiGetUnread,
   type ChatRoomItem,
   type ChatRoomDetail,
-  type ChatMemberItem,
   type MessageItem,
 } from '../api/chat'
 import { apiListUsers } from '../api/motorcycles'
@@ -54,7 +53,6 @@ type View = 'list' | 'chat' | 'create'
 
 export default function ChatPage() {
   const { user } = useAuth()
-  const token = tokenStorage.getAccess()
   const isAdmin = user?.is_superuser ?? false
   const [view, setView] = useState<View>('list')
   const [searchParams] = useSearchParams()
@@ -380,29 +378,6 @@ export default function ChatPage() {
       setAllUsers(users.map((u: any) => ({ id: u.id, username: u.username })))
     } catch { /* ignore */ }
   }, [])
-
-  /** Быстро создать/открыть DM с конкретным пользователем */
-  const startDm = useCallback(async (otherUserId: number) => {
-    setCreating(true)
-    try {
-      const room = await apiCreateRoom({
-        room_type: 'dm',
-        member_ids: [otherUserId],
-      })
-      // Открыть этот DM
-      setView('chat')
-      await openRoom(room.id)
-      // Добавить в список комнат если нет
-      setRooms((prev) => {
-        if (prev.some((r) => r.id === room.id)) return prev
-        return [room as any, ...prev]
-      })
-    } catch {
-      // DM уже существует или ошибка — просто открываем список
-    } finally {
-      setCreating(false)
-    }
-  }, [openRoom])
 
   const createRoom = useCallback(async (e: FormEvent) => {
     e.preventDefault()
