@@ -7,9 +7,11 @@ import {
   disableTracking,
   enableTracking,
   getLastFix,
+  isPermanentTrackingEnabled,
   isTrackingEnabled,
   startBackgroundLocation,
   subscribeLocation,
+  togglePermanentTracking,
   type LocationFix,
 } from '../services/backgroundLocation'
 
@@ -344,6 +346,9 @@ export default function MapPage() {
   // метку с карты (у себя и у остальных райдеров).
   const [tracking, setTracking] = useState<boolean>(() => isTrackingEnabled())
   const [trackingBusy, setTrackingBusy] = useState<boolean>(false)
+  const [permanentTracking, setPermanentTracking] = useState<boolean>(
+    () => isPermanentTrackingEnabled(),
+  )
 
 
   // Инициализация карты
@@ -1020,6 +1025,11 @@ export default function MapPage() {
     try {
       await disableTracking()
       setTracking(false)
+      // При выключении трекинга снимаем и флаг постоянного отслеживания
+      if (permanentTracking) {
+        togglePermanentTracking()
+        setPermanentTracking(false)
+      }
       // Метка на карте у себя должна исчезнуть мгновенно; у остальных —
       // при следующем опросе /users/locations (DELETE уже улетел).
       removeMyMarker()
@@ -1107,6 +1117,44 @@ export default function MapPage() {
               {trackingBusy ? 'Запрашиваем…' : 'Отслеживать меня'}
             </button>
           )}
+
+          {/* Кнопка «Отслеживать постоянно» — включает авто-трекинг
+              при каждом входе в приложение */}
+          <button
+            type="button"
+            className={`btn btn-sm map-permanent-btn ${permanentTracking ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={async () => {
+              const next = togglePermanentTracking()
+              setPermanentTracking(next)
+              // Если включили постоянный трекинг, а трекинг ещё не активен —
+              // сразу запускаем его
+              if (next && !tracking && !trackingBusy) {
+                setTrackingBusy(true)
+                try {
+                  const ok = await enableTracking()
+                  if (ok) setTracking(true)
+                  else {
+                    // Не удалось — откатываем permanent
+                    togglePermanentTracking()
+                    setPermanentTracking(false)
+                    window.alert(
+                      'Не удалось получить разрешение на геолокацию. Проверьте ' +
+                        'настройки браузера/системы и попробуйте снова.',
+                    )
+                  }
+                } finally {
+                  setTrackingBusy(false)
+                }
+              }
+            }}
+            title={
+              permanentTracking
+                ? 'Трекинг включён постоянно — выключить'
+                : 'Включить постоянный трекинг: позиция будет отправляться всегда при входе в приложение'
+            }
+          >
+            {permanentTracking ? '📡 Отслеживать постоянно (вкл)' : '📍 Отслеживать постоянно'}
+          </button>
 
           <button
             type="button"

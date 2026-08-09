@@ -84,7 +84,12 @@ const LAST_FIX_KEY = 'moto39_last_location'
  *   • "off" — пользователь явно отказался; при логине сервис не стартует.
  */
 const TRACKING_ENABLED_KEY = 'moto39_tracking_enabled'
-
+/**
+ * Ключ в localStorage для режима «Отслеживать постоянно».
+ * Если "on" — трекинг запускается автоматически при каждом входе
+ * в приложение, без необходимости каждый раз нажимать кнопку.
+ */
+const PERMANENT_TRACKING_KEY = 'moto39_permanent_tracking'
 
 let nativeWatcherId: string | null = null
 let webWatchId: number | null = null
@@ -789,6 +794,38 @@ function setTrackingPreference(value: 'on' | 'off'): void {
 }
 
 /**
+ * Включён ли режим «Отслеживать постоянно».
+ * Если true — трекинг будет автоматически запускаться при каждом
+ * входе в приложение, даже если пользователь не нажимал кнопку
+ * «Отслеживать меня» в текущей сессии.
+ */
+export function isPermanentTrackingEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(PERMANENT_TRACKING_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+/** Переключить режим постоянного отслеживания. */
+export function togglePermanentTracking(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  const was = isPermanentTrackingEnabled()
+  const next = !was
+  try {
+    if (next) {
+      localStorage.setItem(PERMANENT_TRACKING_KEY, 'on')
+    } else {
+      localStorage.removeItem(PERMANENT_TRACKING_KEY)
+    }
+  } catch {
+    /* noop */
+  }
+  return next
+}
+
+/**
  * Спросить у браузера/ОС разрешение на геолокацию (единичный запрос).
  * Возвращает `true`, если разрешение подтверждено (даже если GPS-фикс
  * ещё не получен — watcher доберёт его позже). Используется на веб-
@@ -949,6 +986,13 @@ export async function disableTracking(): Promise<void> {
 export async function startBackgroundLocation(): Promise<void> {
   // Прогружаем кеш заранее, чтобы `getLastFix()` работал сразу.
   if (!lastFix) lastFix = loadCachedFix()
+
+  // Если включён режим «Отслеживать постоянно» — автоматически
+  // включаем tracking при старте, даже если пользователь не нажимал
+  // кнопку «Отслеживать меня» в текущей сессии.
+  if (!isTrackingEnabled() && isPermanentTrackingEnabled()) {
+    setTrackingPreference('on')
+  }
 
   if (!isTrackingEnabled()) {
     // Пользователь не давал согласия — не поднимаем watcher, чтобы
