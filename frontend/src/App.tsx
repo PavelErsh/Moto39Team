@@ -130,8 +130,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/rides" element={<EventsPage />} />
           <Route path="/rides/:id" element={<RideDetailPage />} />
+          <Route path="/rides" element={<EventsPage />} />
           <Route
             path="/map"
             element={
