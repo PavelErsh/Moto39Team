@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false)
 
   if (user) {
-    return <Navigate to="/cabinet" replace />
+    return <Navigate to="/" replace />
   }
 
   async function onSubmit(e: FormEvent) {
@@ -27,7 +27,7 @@ export default function LoginPage() {
     try {
       await login(username.trim(), password)
       const from = (location.state as LocationState | null)?.from
-      navigate(from && from !== '/login' ? from : '/cabinet', { replace: true })
+      navigate(from && from !== '/login' ? from : '/', { replace: true })
     } catch (err) {
       setError(extractApiError(err))
     } finally {
