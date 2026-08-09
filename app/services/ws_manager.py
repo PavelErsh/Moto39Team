@@ -152,6 +152,12 @@ async def notify_user(user_id: int, data: dict) -> None:
             ws_to_user.pop(d, None)
 
 
+async def is_user_online(user_id: int) -> bool:
+    """Проверить, есть ли у пользователя активные WebSocket-соединения."""
+    async with _ws_lock:
+        return user_id in user_ws and len(user_ws[user_id]) > 0
+
+
 # ── Redis Pub/Sub (для горизонтального масштабирования) ──────────
 
 _redis_pub: redis.Redis | None = None

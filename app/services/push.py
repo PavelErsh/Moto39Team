@@ -1,0 +1,157 @@
+"""Сервис отправки Web Push-уведомлений через pywebpush."""
+import json
+import logging
+from dataclasses import dataclass
+
+from pywebpush import WebPushException, webpush
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PushPayload:
+    """Данные для push-уведомления."""
+
+    title: str
+    body: str
+    icon: str = "/icon-192.png"
+    badge: str = "/icon-192.png"
+    tag: str = ""
+    url: str = "/"
+    # Дополнительные данные, которые попадут в data уведомления
+    data: dict | None = None
+
+
+class PushService:
+    """Отправка Web Push-уведомлений (PWA).
+
+    Использует VAPID (Voluntary Application Server Identification)
+    для аутентификации на Push Service (FCM для Chrome, Mozilla
+    autopush для Firefox и т.д.).
+
+    Требует настроек:
+    - VAPID_PRIVATE_KEY
+    - VAPID_PUBLIC_KEY (опционально — вычисляется из приватного)
+    - VAPID_CLAIMS_EMAIL (email администратора, обычно mailto:...)
+    """
+
+    def __init__(self) -> None:
+        self._vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", "")
+        self._vapid_claims_email = getattr(
+            settings, "VAPID_CLAIMS_EMAIL", "mailto:admin@moto39team.ru"
+        )
+        self._enabled = bool(self._vapid_private_key)
+        self._vapid_public_key = ""
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @property
+    def vapid_public_key(self) -> str:
+        """Публичный VAPID-ключ (вычисляется из приватного)."""
+        if self._vapid_public_key:
+            return self._vapid_public_key
+        if not self._vapid_private_key:
+            return ""
+        try:
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from base64 import urlsafe_b64encode
+
+            private = serialization.load_pem_private_key(
+                self._vapid_private_key.encode(),
+                password=None,
+            )
+            if not isinstance(private, ec.EllipticCurvePrivateKey):
+                return ""
+
+            public_bytes = private.public_key().public_bytes(
+                encoding=serialization.Encoding.X962,
+                format=serialization.PublicFormat.UncompressedPoint,
+            )
+            self._vapid_public_key = (
+                urlsafe_b64encode(public_bytes)
+                .decode("ascii")
+                .rstrip("=")
+            )
+        except Exception:
+            pass
+        return self._vapid_public_key
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    async def send(
+        self,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+        payload: PushPayload,
+    ) -> bool:
+        """Отправить push-уведомление на один endpoint.
+
+        Returns:
+            True если отправлено успешно, False если ошибка.
+        """
+        if not self._enabled:
+            logger.debug("Push disabled: no VAPID_PRIVATE_KEY configured")
+            return False
+
+        data = json.dumps(
+            {
+                "title": payload.title,
+                "body": payload.body,
+                "icon": payload.icon,
+                "badge": payload.badge,
+                "tag": payload.tag,
+                "data": {
+                    "url": payload.url,
+                    **(payload.data or {}),
+                },
+            },
+            ensure_ascii=False,
+        )
+
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": endpoint,
+                    "keys": {
+                        "p256dh": p256dh,
+                        "auth": auth,
+                    },
+                },
+                data=data,
+                vapid_private_key=self._vapid_private_key,
+                vapid_claims={
+                    "sub": self._vapid_claims_email,
+                },
+                # Таймаут 15 секунд на отправку
+                timeout=15,
+            )
+            return True
+        except WebPushException as exc:
+            # Если endpoint больше не валиден (410 Gone / 404) —
+            # логируем, чтобы вызывающий код мог удалить подписку.
+            if hasattr(exc, "response") and exc.response is not None:
+                status = getattr(exc.response, "status_code", 0)
+                if status in (404, 410):
+                    logger.info(
+                        "Push subscription expired (HTTP %s): %s",
+                        status,
+                        endpoint[:80],
+                    )
+                    raise  # пробрасываем наверх для удаления из БД
+            logger.warning("WebPush error for %s: %s", endpoint[:80], exc)
+            return False
+        except Exception:
+            logger.exception("Unexpected push error for %s", endpoint[:80])
+            return False
+
+
+# Глобальный экземпляр сервиса
+push_service = PushService()

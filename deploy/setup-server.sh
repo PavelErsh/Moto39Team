@@ -104,6 +104,13 @@ if [[ ! -f "${SERVER_PROJECT_DIR}/.env" ]]; then
     CORS="https://${DOMAIN}"
     [[ -n "${DOMAIN_WWW}" ]] && CORS="${CORS},https://${DOMAIN_WWW}"
 
+    # Генерируем VAPID-ключи для Web Push-уведомлений (PWA)
+    VAPID_PRIVATE_PEM=$(mktemp)
+    openssl ecparam -genkey -name prime256v1 -out "${VAPID_PRIVATE_PEM}" 2>/dev/null
+    VAPID_PRIVATE_KEY_GEN=$(openssl ec -in "${VAPID_PRIVATE_PEM}" -outform DER 2>/dev/null \
+        | base64 | tr -d '\n' | tr '/+' '_-' | tr -d '=')
+    rm -f "${VAPID_PRIVATE_PEM}"
+
     cat > "${SERVER_PROJECT_DIR}/.env" <<EOF
 # Сгенерировано deploy/setup-server.sh на $(date -Iseconds)
 APP_NAME=Moto39Team
@@ -125,6 +132,9 @@ CORS_ORIGINS=${CORS}
 CORS_ORIGIN_REGEX=
 
 UPLOAD_DIR=uploads
+
+VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY_GEN}
+VAPID_CLAIMS_EMAIL=mailto:${LETSENCRYPT_EMAIL}
 EOF
     chown "${OWNER_USER}:${OWNER_USER}" "${SERVER_PROJECT_DIR}/.env"
     chmod 600 "${SERVER_PROJECT_DIR}/.env"

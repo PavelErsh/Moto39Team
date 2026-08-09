@@ -25,6 +25,32 @@ git fetch --all --prune
 git pull --ff-only
 
 log "2/4  Пересобираю и перезапускаю backend (docker compose)"
+
+# Если в .env ещё нет VAPID-ключей для push-уведомлений — сгенерируем и добавим
+ENV_FILE="${PROJECT_DIR}/.env"
+if [[ -f "${ENV_FILE}" ]]; then
+    if ! grep -q "^VAPID_PRIVATE_KEY=" "${ENV_FILE}" 2>/dev/null; then
+        echo "   • Генерирую VAPID-ключи для Web Push…"
+        VAPID_PRIVATE_PEM=$(mktemp)
+        openssl ecparam -genkey -name prime256v1 -out "${VAPID_PRIVATE_PEM}" 2>/dev/null
+        VAPID_PRIVATE_KEY_NEW=$(openssl ec -in "${VAPID_PRIVATE_PEM}" -outform DER 2>/dev/null \
+            | base64 | tr -d '\n' | tr '/+' '_-' | tr -d '=')
+        rm -f "${VAPID_PRIVATE_PEM}"
+        # Подбираем email из существующего LETSENCRYPT_EMAIL или из .env
+        VAPID_EMAIL="mailto:admin@moto39team.ru"
+        if grep -q "^LETSENCRYPT_EMAIL=" "${PROJECT_DIR}/deploy/deploy.env" 2>/dev/null; then
+            VAPID_EMAIL="mailto:$(grep "^LETSENCRYPT_EMAIL=" "${PROJECT_DIR}/deploy/deploy.env" | cut -d= -f2-)"
+        fi
+        cat >> "${ENV_FILE}" <<EOF
+
+# VAPID-ключи для Web Push-уведомлений (автоматически сгенерированы update.sh)
+VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY_NEW}
+VAPID_CLAIMS_EMAIL=${VAPID_EMAIL}
+EOF
+        echo "   • VAPID-ключи добавлены в .env"
+    fi
+fi
+
 docker compose up -d --build
 # Миграции применяются автоматически (см. command в docker-compose.yml),
 # но на всякий случай явно дожмём их, если контейнер уже был запущен:

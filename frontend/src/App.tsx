@@ -8,6 +8,7 @@ import RegisterPage from './pages/RegisterPage'
 import StubPage from './pages/StubPage'
 import { useAuth } from './context/AuthContext'
 import { useTwemoji } from './hooks/useTwemoji'
+import { usePushSubscription } from './hooks/usePush'
 import { requestNotificationPermissions } from './utils/notifications'
 
 /**
@@ -44,6 +45,7 @@ function PageFallback() {
 export default function App() {
   const { loading } = useAuth()
   useTwemoji()
+  usePushSubscription()
 
   // Запрашиваем разрешение на уведомления при первом входе
   useEffect(() => {
