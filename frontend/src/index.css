@@ -3449,13 +3449,13 @@ html.low-end .nav-user:hover {
 }
 
 .chat-msg--mine .chat-msg__bubble {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: #1a3a2a;
+  border-color: #2a5a3a;
+  color: #e0e8d8;
 }
 
 .chat-msg--mine .chat-msg__bubble p {
-  color: #fff;
+  color: #e0e8d8;
 }
 
 /* Чужие сообщения — слева */
