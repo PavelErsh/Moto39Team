@@ -38,10 +38,8 @@ class PushService:
     """
 
     def __init__(self) -> None:
-        self._vapid_private_key = getattr(settings, "VAPID_PRIVATE_KEY", "")
-        self._vapid_claims_email = getattr(
-            settings, "VAPID_CLAIMS_EMAIL", "mailto:admin@moto39team.ru"
-        )
+        self._vapid_private_key = settings.VAPID_PRIVATE_KEY
+        self._vapid_claims_email = settings.VAPID_CLAIMS_EMAIL
         self._enabled = bool(self._vapid_private_key)
         self._vapid_public_key = ""
 
@@ -80,10 +78,6 @@ class PushService:
         except Exception:
             pass
         return self._vapid_public_key
-
-    @property
-    def enabled(self) -> bool:
-        return self._enabled
 
     async def send(
         self,
