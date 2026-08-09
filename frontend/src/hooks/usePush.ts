@@ -41,7 +41,7 @@ async function getVapidPublicKey(): Promise<string | null> {
   return null
 }
 
-async function subscribeUser(userId: number): Promise<void> {
+async function subscribeUser(_userId: number): Promise<void> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.log('[Push] Push API не поддерживается браузером')
     return
