@@ -3241,6 +3241,7 @@ html.low-end .nav-user:hover {
 /* Когда на странице чата — убираем лишние отступы у main,
    чтобы поле ввода было ближе к клавиатуре на мобильных */
 body:has(.chat-page) .main {
+  padding-top: 0;
   padding-bottom: 0;
 }
 
@@ -3395,9 +3396,10 @@ body:has(.chat-page) .main {
   display: flex;
   flex-direction: column;
   /* fallback для браузеров без поддержки dvh */
-  height: calc(100vh - 200px);
-  /* Используем dvh чтобы клавиатура не перекрывала поле ввода */
-  height: calc(100dvh - 200px);
+  height: calc(100vh - 60px);
+  /* Используем dvh чтобы клавиатура не перекрывала поле ввода;
+     60px — высота site-header, остальное пространство отдаём чату */
+  height: calc(100dvh - 60px);
   min-height: 400px;
 }
 
@@ -3408,6 +3410,10 @@ body:has(.chat-page) .main {
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #050705;
 }
 
 .chat-conversation__title {
@@ -3435,7 +3441,7 @@ body:has(.chat-page) .main {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 0;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3531,7 +3537,8 @@ body:has(.chat-page) .main {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 12px 0;
+  padding: 8px 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
