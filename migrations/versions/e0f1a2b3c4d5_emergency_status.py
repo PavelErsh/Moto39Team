@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = "e0f1a2b3c4d5"
@@ -20,13 +19,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column("emergency_status", sa.String(length=16), nullable=True),
+    # Используем ADD COLUMN IF NOT EXISTS чтобы миграция была
+    # идемпотентной: если колонка уже создана (например, предыдущим
+    # неудачным запуском), ошибки не будет. Данные не теряются.
+    op.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "emergency_status VARCHAR(16)"
     )
-    op.add_column(
-        "users",
-        sa.Column("emergency_status_at", sa.DateTime(timezone=True), nullable=True),
+    op.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "emergency_status_at TIMESTAMPTZ"
     )
 
 
