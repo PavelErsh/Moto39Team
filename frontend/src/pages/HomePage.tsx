@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiUpdateEmergencyStatus } from '../api/motorcycles'
@@ -26,7 +27,7 @@ import { apiUpdateEmergencyStatus } from '../api/motorcycles'
  *   • ГАРАЖ — мотоциклы пользователя (/moto)
  *   • РАЙДЕРЫ — все пользователи (/riders)
  *   • МОТОКАЛЕНДАРЬ — календарь событий (/calendar)
- *   • СОБЫТИЯ — раздел в разработке
+ *   • СОБЫТИЯ — события и мероприятия (/rides)
  *   • МОТОСПРАВКА — справка по мото (/reference)
  *   • ОБЩИЙ ЧАТ — Telegram-чат moto39
  *   • БАЙКЧАТ — раздел в разработке
@@ -120,6 +121,9 @@ const HITS: Record<string, Hit> = {
 export default function HomePage() {
   const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
+
+  // Состояние диалога подтверждения SOS/HELP
+  const [confirmModal, setConfirmModal] = useState<'sos' | 'help' | null>(null)
 
 
   // Гостевая версия — экран приветствия с приглашением войти/вступить.
@@ -224,49 +228,33 @@ export default function HomePage() {
 
 
 
-  // Открыть пост SOS/HELP — с подтверждением, что ситуация срочная.
-  // После подтверждения устанавливает emergency_status на бэке (меняет
-  // вид маркера на карте: help → жёлтая точка, sos → красная точка).
+  // Открыть пост SOS/HELP — с подтверждением через кастомный диалог
+  // о том, что ситуация срочная (кнопки «Да, ситуация срочная» /
+  // «Нет, случайно нажал»).
   //
   // ВАЖНО (Safari): `window.open` должен вызываться СИНХРОННО в рамках
   // пользовательского жеста. После `await` Safari считает, что жест
   // потерян, и блокирует открытие новой вкладки (даже с noopener). Поэтому
   // сначала открываем Telegram, а обновление статуса делаем в фоне.
   const openSosHelp = (type: 'help' | 'sos') => {
-    const confirmed = window.confirm(
-      '⚠️ Эти кнопки для чрезвычайных ситуаций.\n' +
-      'В случае отправки ложных сообщений к вам могут быть применены меры вплоть до блокировки.\n\n' +
-      'Нажмите «ОК» — если ситуация срочная,\n' +
-      '«Отмена» — если нажали случайно.',
-    )
-    if (!confirmed) return
-
     // 1) Синхронно открываем Telegram — иначе Safari заблокирует popup.
-    //    Сохраняем ссылку на окно на случай, если понадобится fallback
-    //    (см. ниже — если браузер вернул null, значит popup заблокирован
-    //    и мы делаем навигацию в текущей вкладке).
     const win = window.open(TG_SOS_URL, '_blank', 'noopener,noreferrer')
 
-    // 2) В фоне обновляем emergency_status и перечитываем профиль,
-    //    чтобы собственный маркер на карте перекрасился в соответствующий
-    //    цвет ещё до следующего опроса /users/locations.
+    // 2) В фоне обновляем emergency_status
     ;(async () => {
       try {
         await apiUpdateEmergencyStatus(type)
         try {
           await refreshUser()
         } catch {
-          /* noop — не блокируем открытие чата ошибкой обновления */
+          /* noop */
         }
       } catch {
-        // Тихо игнорируем — главное открыть чат
+        /* noop */
       }
     })()
 
-    // 3) Fallback: если window.open вернул null (некоторые версии Safari
-    //    и режимы PWA/standalone блокируют popup даже при синхронном
-    //    вызове) — уходим в Telegram прямо в текущей вкладке. Обновление
-    //    статуса уже запущено выше и продолжит выполняться до unload.
+    // 3) Fallback
     if (!win) {
       window.location.href = TG_SOS_URL
     }
@@ -417,13 +405,13 @@ export default function HomePage() {
           onClick={openYaKatayu}
         />
 
-        {/* SOS — конкретный пост Telegram (с подтверждением) */}
+        {/* SOS — сначала диалог подтверждения */}
         <button
           type="button"
           aria-label={HITS.sos.label}
           className="pager-hit"
           style={hitStyle(HITS.sos)}
-          onClick={() => openSosHelp('sos')}
+          onClick={() => setConfirmModal('sos')}
         />
 
         {/* Выход */}
@@ -435,13 +423,13 @@ export default function HomePage() {
           onClick={handleExit}
         />
 
-        {/* HELP — тот же пост, что и SOS (с подтверждением) */}
+        {/* HELP — сначала диалог подтверждения */}
         <button
           type="button"
           aria-label={HITS.help.label}
           className="pager-hit"
           style={hitStyle(HITS.help)}
-          onClick={() => openSosHelp('help')}
+          onClick={() => setConfirmModal('help')}
         />
 
         {/* Гараж */}
@@ -468,7 +456,7 @@ export default function HomePage() {
           style={hitStyle(HITS.kaln)}
         />
 
-        {/* События — раздел в разработке */}
+        {/* События */}
         <Link
           to="/rides"
           aria-label={HITS.sob.label}
@@ -501,6 +489,40 @@ export default function HomePage() {
           style={hitStyle(HITS.baik)}
         />
       </div>
+
+      {confirmModal && (
+        <div className="modal-overlay" onClick={() => setConfirmModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-icon">⚠️</div>
+            <h3 className="modal-title">
+              {confirmModal === 'sos' ? 'SOS' : 'HELP'}
+            </h3>
+            <p className="modal-text">
+              Эти кнопки для чрезвычайных ситуаций. В случае отправки ложных
+              сообщений, к вам могут быть применены меры вплоть до блокировки.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-primary modal-btn"
+                onClick={() => {
+                  setConfirmModal(null)
+                  openSosHelp(confirmModal)
+                }}
+              >
+                Да, ситуация срочная
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost modal-btn"
+                onClick={() => setConfirmModal(null)}
+              >
+                Нет, случайно нажал
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
