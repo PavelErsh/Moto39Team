@@ -51,6 +51,7 @@ class ChatRoomRead(BaseModel):
     last_message: MessageRead | None = None
     unread_count: int = 0
     member_count: int = 0
+    dm_partner_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

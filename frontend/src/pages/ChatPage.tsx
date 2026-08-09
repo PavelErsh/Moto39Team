@@ -410,8 +410,21 @@ export default function ChatPage() {
 
   const roomName = (room: ChatRoomItem) => {
     if (room.name) return room.name
-    // Для DM показываем "Чат с ..." — но без загрузки участников в списке
+    if (room.room_type === 'dm' && room.dm_partner_name) {
+      return room.dm_partner_name
+    }
     return room.room_type === 'dm' ? 'Личный чат' : `Беседа #${room.id}`
+  }
+
+  const conversationTitle = (room: ChatRoomDetail | null, roomId: number | null) => {
+    if (!room || !roomId) return 'Загрузка…'
+    if (room.name) return room.name
+    if (room.room_type === 'dm') {
+      const partner = room.members?.find((m) => m.user_id !== user?.id)
+      if (partner?.username) return partner.username
+      return 'Личный чат'
+    }
+    return `Беседа #${roomId}`
   }
 
   const totalUnread = useMemo(
@@ -501,9 +514,7 @@ export default function ChatPage() {
               ← Чаты
             </button>
             <h2 className="chat-conversation__title">
-              {activeRoom
-                ? (activeRoom.name || `Беседа #${activeRoomId}`)
-                : 'Загрузка…'}
+              {conversationTitle(activeRoom, activeRoomId)}
             </h2>
             <span className="chat-conversation__members">
               {activeRoom?.member_count ?? 0} участ.

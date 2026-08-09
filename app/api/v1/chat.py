@@ -83,7 +83,18 @@ def _room_to_read(room: ChatRoom, user_id: int, unread_counts: dict[int, int] | 
         last_message=last_msg,
         unread_count=unread,
         member_count=len(room.members),
+        dm_partner_name=_dm_partner_name(room, user_id),
     )
+
+
+def _dm_partner_name(room: ChatRoom, current_user_id: int) -> str | None:
+    """Для DM-комнаты вернуть имя собеседника."""
+    if room.room_type != "dm":
+        return None
+    for member in room.members:
+        if member.user_id != current_user_id:
+            return member.user.username if member.user else None
+    return None
 
 
 def _message_to_read(msg) -> MessageRead:

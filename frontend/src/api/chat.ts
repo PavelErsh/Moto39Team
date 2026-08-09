@@ -10,6 +10,7 @@ export interface ChatRoomItem {
   last_message: MessageItem | null
   unread_count: number
   member_count: number
+  dm_partner_name: string | null
 }
 
 export interface ChatRoomDetail extends ChatRoomItem {
