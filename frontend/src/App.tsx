@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -8,6 +8,7 @@ import RegisterPage from './pages/RegisterPage'
 import StubPage from './pages/StubPage'
 import { useAuth } from './context/AuthContext'
 import { useTwemoji } from './hooks/useTwemoji'
+import { requestNotificationPermissions } from './utils/notifications'
 
 /**
  * Code-splitting крупных / редко используемых страниц.
@@ -24,6 +25,7 @@ const UserProfilePage = lazy(() => import('./pages/UserProfilePage'))
 const RidersPage = lazy(() => import('./pages/RidersPage'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const EventsPage = lazy(() => import('./pages/EventsPage'))
+const ChatPage = lazy(() => import('./pages/ChatPage'))
 const RideDetailPage = lazy(() => import('./pages/RideDetailPage'))
 const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
@@ -42,6 +44,11 @@ function PageFallback() {
 export default function App() {
   const { loading } = useAuth()
   useTwemoji()
+
+  // Запрашиваем разрешение на уведомления при первом входе
+  useEffect(() => {
+    requestNotificationPermissions()
+  }, [])
 
   if (loading) {
     return (
@@ -95,11 +102,9 @@ export default function App() {
           <Route
             path="/chat"
             element={
-              <StubPage
-                icon="💬"
-                title="Байкчат"
-                description="В настоящее время ведутся работы по созданию своего чата для байкеров, не привязанного к Телеграмм и не требующего VPN и прокси. Одновременно с его созданием появится возможность эффективной коммуникации внутри приложения, например при нажатии на точку расположения райдера на мотокарте сразу написать ему в ЛС."
-              />
+              <ProtectedRoute>
+                <ChatPage />
+              </ProtectedRoute>
             }
           />
           <Route

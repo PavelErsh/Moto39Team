@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import { apiListUsers, type PublicUser } from '../api/motorcycles'
+import { apiCreateRoom } from '../api/chat'
 
 // Утилита: человекочитаемое «как давно был на связи».
 function formatLastSeen(iso: string | null | undefined): string | null {
@@ -42,6 +43,26 @@ export default function RidersPage() {
   // Счётчик тиков — заставляет пересчитать `sorted`/лейблы времени,
   // даже если список пользователей не обновлялся с бэкенда.
   const [, setTick] = useState(0)
+  const navigate = useNavigate()
+
+  /** Быстро открыть DM с райдером и перейти сразу в переписку */
+  const startDm = useCallback(
+    async (e: React.MouseEvent, userId: number) => {
+      e.preventDefault() // чтобы не переходить по ссылке на профиль
+      e.stopPropagation()
+      try {
+        const room = await apiCreateRoom({
+          room_type: 'dm',
+          member_ids: [userId],
+        })
+        navigate(`/chat?room=${room.id}`)
+      } catch {
+        // DM уже может существовать — переходим в чат
+        navigate('/chat')
+      }
+    },
+    [navigate],
+  )
 
   useEffect(() => {
     let alive = true
@@ -119,45 +140,61 @@ export default function RidersPage() {
                 ONLINE_THRESHOLD_MS
               : false
             return (
-              <Link
-                key={u.id}
-                to={`/u/${encodeURIComponent(u.username)}`}
-                className="rider-card"
-              >
-                {u.avatar_url ? (
-                  <div className="avatar rider-card__avatar avatar--image">
-                    <img src={u.avatar_url} alt={u.username} />
+              <div key={u.id} className="rider-card-wrapper" style={{ position: 'relative' }}>
+                <Link
+                  to={`/u/${encodeURIComponent(u.username)}`}
+                  className="rider-card"
+                  style={{ paddingRight: 48 }}
+                >
+                  {u.avatar_url ? (
+                    <div className="avatar rider-card__avatar avatar--image">
+                      <img src={u.avatar_url} alt={u.username} />
+                    </div>
+                  ) : (
+                    <div className="avatar rider-card__avatar">{initial}</div>
+                  )}
+                  <div className="rider-card__body">
+                    <div className="rider-card__name">
+                      {u.full_name || u.username}
+                      {u.sponsor_badge && (
+                        <span className="sponsor-badge" title="Спонсор проекта">
+                          {u.sponsor_badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="muted">@{u.username}</div>
+                    <div className="rider-card__count">
+                      🏍️ {u.motorcycles.length}
+                    </div>
+                    <div className="rider-card__seen">
+                      {isOnline ? (
+                        <span className="rider-card__online">● в сети</span>
+                      ) : lastSeenText ? (
+                        <span className="muted">был(а) {lastSeenText}</span>
+                      ) : (
+                        <span className="muted">давно не появлялся</span>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <div className="avatar rider-card__avatar">{initial}</div>
-                )}
-                <div className="rider-card__body">
-                  <div className="rider-card__name">
-                    {u.full_name || u.username}
-                    {u.sponsor_badge && (
-                      <span
-                        className="sponsor-badge"
-                        title="Спонсор проекта"
-                      >
-                        {u.sponsor_badge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="muted">@{u.username}</div>
-                  <div className="rider-card__count">
-                    🏍️ {u.motorcycles.length}
-                  </div>
-                  <div className="rider-card__seen">
-                    {isOnline ? (
-                      <span className="rider-card__online">● в сети</span>
-                    ) : lastSeenText ? (
-                      <span className="muted">был(а) {lastSeenText}</span>
-                    ) : (
-                      <span className="muted">давно не появлялся</span>
-                    )}
-                  </div>
-                </div>
-              </Link>
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-sm rider-dm-btn"
+                  onClick={(e) => startDm(e, u.id)}
+                  title="Написать в личные сообщения"
+                  style={{
+                    position: 'absolute',
+                    right: 6,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    minWidth: 36,
+                    padding: '6px 10px',
+                    fontSize: 16,
+                  }}
+                >
+                  💬
+                </button>
+              </div>
             )
           })}
         </div>

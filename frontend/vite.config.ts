@@ -11,19 +11,19 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // Дополнительно проксируем /api на локальный бэкенд FastAPI (порт 8000),
 // чтобы клиент мог обращаться к API по тому же HTTPS-адресу без mixed content.
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react()],
   server: {
-    host: true, // 0.0.0.0 — доступно с телефона в той же Wi-Fi сети
+    host: true,
     port: 5173,
-    // basicSsl подсунет самоподписанный сертификат; типы Vite не принимают
-    // просто `true`, поэтому передаём пустой объект (эквивалентно `true`).
-    https: {},
     strictPort: false,
+    // HTTPS временно отключён для локальной разработки чата (ws:// WebSocket).
+    // basicSsl() будет возвращён после тестирования.
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
+        ws: true,  // WebSocket-прокси для чата
       },
       // Прокси на загруженные файлы (изображения статей мотосправки и т.п.)
       '/media': {
