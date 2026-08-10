@@ -88,6 +88,7 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const draftInputRef = useRef<HTMLTextAreaElement>(null)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -294,6 +295,14 @@ export default function ChatPage() {
     const text = draft.trim()
     if (!text || !activeRoomId) return
 
+    const keepComposerVisible = () => {
+      requestAnimationFrame(() => {
+        draftInputRef.current?.focus({ preventScroll: true })
+        draftInputRef.current?.scrollIntoView({ block: 'nearest' })
+        messagesEndRef.current?.scrollIntoView({ block: 'end' })
+      })
+    }
+
     // Optimistic: add message to list immediately
     const optimisticId = -Date.now()
     const optimisticMsg: MessageItem = {
@@ -312,6 +321,7 @@ export default function ChatPage() {
     }
     setMessages((prev) => [...prev, optimisticMsg])
     setDraft('')
+    keepComposerVisible()
 
     const ws = wsRef.current
     if (!ws) {
@@ -604,6 +614,7 @@ export default function ChatPage() {
 
           <form className="chat-input" onSubmit={sendMessage}>
             <textarea
+              ref={draftInputRef}
               className="chat-input__textarea"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -615,6 +626,8 @@ export default function ChatPage() {
             <button
               type="submit"
               className="btn btn-primary chat-input__send"
+              onMouseDown={(e) => e.preventDefault()}
+              onTouchStart={(e) => e.preventDefault()}
               disabled={!draft.trim()}
             >
               →
