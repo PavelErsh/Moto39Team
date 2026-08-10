@@ -3735,33 +3735,46 @@ html.low-end .nav-user:hover {
 .chat-msg__reply-preview {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
   text-align: left;
   margin-bottom: 8px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--accent-dim);
+  padding: 9px 11px;
+  border-left: 4px solid var(--accent);
   border-radius: 6px;
   border-top: 0;
   border-right: 0;
   border-bottom: 0;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(57, 255, 20, 0.08);
   color: var(--text);
   cursor: pointer;
+}
+
+.chat-msg__reply-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--phosphor);
 }
 
 .chat-msg__reply-author {
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent-2);
+  color: var(--accent);
 }
 
 .chat-msg__reply-text {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-msg--mine .chat-msg__reply-preview {
+  background: rgba(255, 255, 255, 0.07);
+  border-left-color: #8dff72;
 }
 
 .chat-reply-bar {

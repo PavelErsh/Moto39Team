@@ -842,6 +842,7 @@ export default function ChatPage() {
                             startReply(replySource)
                           }}
                         >
+                          <span className="chat-msg__reply-label">Ответ на сообщение</span>
                           <span className="chat-msg__reply-author">
                             {msg.reply_to.sender_username || 'Пользователь'}
                           </span>
