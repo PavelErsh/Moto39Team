@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, UIEvent } from 'react'
+import type { FormEvent, KeyboardEvent, TouchEvent, UIEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
@@ -94,6 +94,7 @@ export default function ChatPage() {
   const lastMessagesScrollTopRef = useRef(0)
   const isAutoScrollingToHeaderRef = useRef(false)
   const hideHeaderToggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTouchYRef = useRef<number | null>(null)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -315,6 +316,43 @@ export default function ChatPage() {
       }, 1200)
     }
   }, [])
+
+  const showHeaderToggleTemporarily = useCallback((container: HTMLDivElement) => {
+    const currentScrollTop = container.scrollTop
+    const distanceToBottom =
+      container.scrollHeight - container.clientHeight - currentScrollTop
+    const isNearBottom = distanceToBottom <= 24
+
+    if (isAutoScrollingToHeaderRef.current) return
+    if (currentScrollTop <= 24 || isNearBottom) return
+
+    if (hideHeaderToggleTimerRef.current) {
+      clearTimeout(hideHeaderToggleTimerRef.current)
+      hideHeaderToggleTimerRef.current = null
+    }
+
+    setIsMessagesScrolled(true)
+    hideHeaderToggleTimerRef.current = setTimeout(() => {
+      setIsMessagesScrolled(false)
+    }, 1200)
+  }, [])
+
+  const handleMessagesTouchStart = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    lastTouchYRef.current = e.touches[0]?.clientY ?? null
+  }, [])
+
+  const handleMessagesTouchMove = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    const currentTouchY = e.touches[0]?.clientY
+    const lastTouchY = lastTouchYRef.current
+
+    if (currentTouchY == null || lastTouchY == null) return
+
+    if (currentTouchY > lastTouchY + 6) {
+      showHeaderToggleTemporarily(e.currentTarget)
+    }
+
+    lastTouchYRef.current = currentTouchY
+  }, [showHeaderToggleTemporarily])
 
   const scrollToConversationHeader = useCallback(() => {
     if (hideHeaderToggleTimerRef.current) {
@@ -608,7 +646,13 @@ export default function ChatPage() {
             </span>
           </header>
 
-          <div className="chat-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
+          <div
+            className="chat-messages"
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            onTouchStart={handleMessagesTouchStart}
+            onTouchMove={handleMessagesTouchMove}
+          >
             {loadingMessages ? (
               <div className="muted" style={{ padding: 16 }}>Загрузка сообщений…</div>
             ) : messages.length === 0 ? (
