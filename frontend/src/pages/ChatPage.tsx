@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { FormEvent, KeyboardEvent, UIEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
@@ -93,6 +93,7 @@ export default function ChatPage() {
   const conversationHeadRef = useRef<HTMLElement>(null)
   const lastMessagesScrollTopRef = useRef(0)
   const isAutoScrollingToHeaderRef = useRef(false)
+  const hideHeaderToggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -268,38 +269,58 @@ export default function ChatPage() {
     const container = messagesContainerRef.current
     if (!container) return
 
-    const updateScrolledState = () => {
-      const currentScrollTop = container.scrollTop
-      const distanceToBottom =
-        container.scrollHeight - container.clientHeight - currentScrollTop
-      const isNearBottom = distanceToBottom <= 24
-
-      if (isAutoScrollingToHeaderRef.current) {
-        setIsMessagesScrolled(false)
-        lastMessagesScrollTopRef.current = currentScrollTop
-
-        if (currentScrollTop <= 24) {
-          isAutoScrollingToHeaderRef.current = false
-        }
-        return
-      }
-
-      const isScrollingUp = currentScrollTop < lastMessagesScrollTopRef.current
-
-      setIsMessagesScrolled(isScrollingUp && currentScrollTop > 24 && !isNearBottom)
-      lastMessagesScrollTopRef.current = currentScrollTop
-    }
-
     lastMessagesScrollTopRef.current = container.scrollTop
-    updateScrolledState()
-    container.addEventListener('scroll', updateScrolledState, { passive: true })
-
-    return () => {
-      container.removeEventListener('scroll', updateScrolledState)
-    }
+    setIsMessagesScrolled(false)
   }, [view, activeRoomId, messages.length])
 
+  useEffect(() => {
+    return () => {
+      if (hideHeaderToggleTimerRef.current) {
+        clearTimeout(hideHeaderToggleTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleMessagesScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget
+    const currentScrollTop = container.scrollTop
+    const distanceToBottom =
+      container.scrollHeight - container.clientHeight - currentScrollTop
+    const isNearBottom = distanceToBottom <= 24
+
+    if (hideHeaderToggleTimerRef.current) {
+      clearTimeout(hideHeaderToggleTimerRef.current)
+      hideHeaderToggleTimerRef.current = null
+    }
+
+    if (isAutoScrollingToHeaderRef.current) {
+      setIsMessagesScrolled(false)
+      lastMessagesScrollTopRef.current = currentScrollTop
+
+      if (currentScrollTop <= 24) {
+        isAutoScrollingToHeaderRef.current = false
+      }
+      return
+    }
+
+    const isScrollingUp = currentScrollTop < lastMessagesScrollTopRef.current
+    const shouldShow = isScrollingUp && currentScrollTop > 24 && !isNearBottom
+
+    setIsMessagesScrolled(shouldShow)
+    lastMessagesScrollTopRef.current = currentScrollTop
+
+    if (shouldShow) {
+      hideHeaderToggleTimerRef.current = setTimeout(() => {
+        setIsMessagesScrolled(false)
+      }, 1200)
+    }
+  }, [])
+
   const scrollToConversationHeader = useCallback(() => {
+    if (hideHeaderToggleTimerRef.current) {
+      clearTimeout(hideHeaderToggleTimerRef.current)
+      hideHeaderToggleTimerRef.current = null
+    }
     isAutoScrollingToHeaderRef.current = true
     setIsMessagesScrolled(false)
     conversationHeadRef.current?.scrollIntoView({
@@ -587,7 +608,7 @@ export default function ChatPage() {
             </span>
           </header>
 
-          <div className="chat-messages" ref={messagesContainerRef}>
+          <div className="chat-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
             {loadingMessages ? (
               <div className="muted" style={{ padding: 16 }}>Загрузка сообщений…</div>
             ) : messages.length === 0 ? (
