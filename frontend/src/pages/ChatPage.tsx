@@ -56,8 +56,7 @@ export default function ChatPage() {
   const isAdmin = user?.is_superuser ?? false
   const [view, setView] = useState<View>('list')
   const [searchParams] = useSearchParams()
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
-  const [isComposerFocused, setIsComposerFocused] = useState(false)
+  const [isMessagesScrolled, setIsMessagesScrolled] = useState(false)
 
   // Комнаты
   const [rooms, setRooms] = useState<ChatRoomItem[]>([])
@@ -264,34 +263,20 @@ export default function ChatPage() {
   }, [messages])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return
+    const container = messagesContainerRef.current
+    if (!container) return
 
-    const root = document.documentElement
-    const viewport = window.visualViewport
-
-    const updateKeyboardOffset = () => {
-      const keyboardOffset = Math.max(
-        0,
-        window.innerHeight - viewport.height - viewport.offsetTop,
-      )
-
-      root.style.setProperty('--chat-keyboard-offset', `${keyboardOffset}px`)
-      setIsKeyboardOpen(keyboardOffset > 120)
+    const updateScrolledState = () => {
+      setIsMessagesScrolled(container.scrollTop > 24)
     }
 
-    updateKeyboardOffset()
-    viewport.addEventListener('resize', updateKeyboardOffset)
-    viewport.addEventListener('scroll', updateKeyboardOffset)
-    window.addEventListener('orientationchange', updateKeyboardOffset)
+    updateScrolledState()
+    container.addEventListener('scroll', updateScrolledState, { passive: true })
 
     return () => {
-      viewport.removeEventListener('resize', updateKeyboardOffset)
-      viewport.removeEventListener('scroll', updateKeyboardOffset)
-      window.removeEventListener('orientationchange', updateKeyboardOffset)
-      root.style.removeProperty('--chat-keyboard-offset')
-      setIsKeyboardOpen(false)
+      container.removeEventListener('scroll', updateScrolledState)
     }
-  }, [])
+  }, [view, activeRoomId, messages.length])
 
   const scrollToConversationHeader = useCallback(() => {
     conversationHeadRef.current?.scrollIntoView({
@@ -628,7 +613,7 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {(isKeyboardOpen || isComposerFocused) && (
+          {isMessagesScrolled && (
             <div className="chat-conversation__header-toggle-wrap">
               <button
                 type="button"
@@ -648,8 +633,6 @@ export default function ChatPage() {
               className="chat-input__textarea"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => setIsComposerFocused(true)}
-              onBlur={() => setIsComposerFocused(false)}
               onKeyDown={onKeyDown}
               placeholder="Сообщение…"
               rows={1}
