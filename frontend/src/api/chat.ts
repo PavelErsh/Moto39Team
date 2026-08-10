@@ -41,6 +41,17 @@ export interface MessageItem {
   sender_username: string | null
   sender_avatar_url: string | null
   sender_sponsor_badge: string | null
+  reply_to: ReplyMessageItem | null
+}
+
+export interface ReplyMessageItem {
+  id: number
+  sender_id: number | null
+  sender_username: string | null
+  content: string | null
+  message_type: string
+  image_url: string | null
+  is_deleted: boolean
 }
 
 export interface UnreadCounts {

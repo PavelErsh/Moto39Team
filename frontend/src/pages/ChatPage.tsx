@@ -13,6 +13,7 @@ import {
   type ChatRoomItem,
   type ChatRoomDetail,
   type MessageItem,
+  type ReplyMessageItem,
 } from '../api/chat'
 import { apiListUsers } from '../api/motorcycles'
 import { useAuth } from '../context/AuthContext'
@@ -46,6 +47,24 @@ function fmtDate(iso: string): string {
     d.getFullYear() === yesterday.getFullYear()
   if (isYesterday) return `Вчера`
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+}
+
+function replyPreviewText(message: Pick<ReplyMessageItem, 'message_type' | 'content' | 'image_url' | 'is_deleted'>): string {
+  if (message.is_deleted) return 'Сообщение удалено'
+  if (message.message_type === 'image' && message.image_url) return '📷 Фото'
+  return message.content?.trim() || 'Сообщение'
+}
+
+function toReplyMessageItem(message: MessageItem): ReplyMessageItem {
+  return {
+    id: message.id,
+    sender_id: message.sender_id,
+    sender_username: message.sender_username,
+    content: message.content,
+    message_type: message.message_type,
+    image_url: message.image_url,
+    is_deleted: message.is_deleted,
+  }
 }
 
 // ── Компонент ───────────────────────────────────────────────────
@@ -89,6 +108,7 @@ export default function ChatPage() {
 
   // Отправка сообщения
   const [draft, setDraft] = useState('')
+  const [replyToMessage, setReplyToMessage] = useState<MessageItem | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
@@ -243,6 +263,7 @@ export default function ChatPage() {
       ])
       setActiveRoom(room)
       setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
+      setReplyToMessage(null)
       setMessages(msgs)
       // Отметить прочитанным
       if (msgs.length > 0) {
@@ -274,6 +295,7 @@ export default function ChatPage() {
     activeRoomIdRef.current = null
     setActiveRoom(null)
     setMessages([])
+    setReplyToMessage(null)
     // Перезагрузить список комнат
     apiListRooms().then(setRooms).catch(() => {})
     apiGetUnread().then((u) => setUnread(u.rooms)).catch(() => {})
@@ -428,9 +450,12 @@ export default function ChatPage() {
       sender_username: user?.username ?? null,
       sender_avatar_url: user?.avatar_url ?? null,
       sender_sponsor_badge: user?.sponsor_badge ?? null,
+      reply_to: replyToMessage ? toReplyMessageItem(replyToMessage) : null,
     }
     setMessages((prev) => [...prev, optimisticMsg])
     setDraft('')
+    const replyTargetId = replyToMessage?.id ?? null
+    setReplyToMessage(null)
     keepComposerVisible()
 
     const ws = wsRef.current
@@ -450,6 +475,7 @@ export default function ChatPage() {
           room_id: activeRoomId,
           content: text,
           message_type: 'text',
+          reply_to_message_id: replyTargetId,
         }))
       }
       ws.addEventListener('open', onOpen)
@@ -460,6 +486,7 @@ export default function ChatPage() {
       room_id: activeRoomId,
       content: text,
       message_type: 'text',
+      reply_to_message_id: replyTargetId,
     }))
 
     // When real message arrives from WS, replace optimistic
@@ -503,7 +530,7 @@ export default function ChatPage() {
     }, 5000)
 
     return () => clearTimeout(checkReplaced)
-  }, [draft, activeRoomId, user])
+  }, [draft, activeRoomId, replyToMessage, user])
 
   const onKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -585,8 +612,21 @@ export default function ChatPage() {
 
   const toggleRoomNotifications = useCallback(async (roomId: number) => {
     const currentEnabled = activeRoom?.notifications_enabled ?? true
+    const nextEnabled = !currentEnabled
+
+    setRooms((prev) =>
+      prev.map((room) =>
+        room.id === roomId ? { ...room, notifications_enabled: nextEnabled } : room,
+      ),
+    )
+    setActiveRoom((prev) => (
+      prev && prev.id === roomId
+        ? { ...prev, notifications_enabled: nextEnabled }
+        : prev
+    ))
+
     try {
-      const updatedRoom = await apiUpdateRoomNotifications(roomId, !currentEnabled)
+      const updatedRoom = await apiUpdateRoomNotifications(roomId, nextEnabled)
       setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, ...updatedRoom } : room)))
       setActiveRoom((prev) => (
         prev && prev.id === roomId
@@ -594,9 +634,27 @@ export default function ChatPage() {
           : prev
       ))
     } catch {
-      // ignore
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === roomId ? { ...room, notifications_enabled: currentEnabled } : room,
+        ),
+      )
+      setActiveRoom((prev) => (
+        prev && prev.id === roomId
+          ? { ...prev, notifications_enabled: currentEnabled }
+          : prev
+      ))
     }
   }, [activeRoom])
+
+  const startReply = useCallback((message: MessageItem) => {
+    setReplyToMessage(message)
+    draftInputRef.current?.focus()
+  }, [])
+
+  const cancelReply = useCallback(() => {
+    setReplyToMessage(null)
+  }, [])
 
   return (
     <section className="chat-page">
@@ -694,7 +752,9 @@ export default function ChatPage() {
             </span>
             <button
               type="button"
-              className="btn btn-ghost btn-sm chat-notification-toggle"
+              className={`btn btn-ghost btn-sm chat-notification-toggle ${
+                activeRoomMuted ? 'chat-notification-toggle--muted' : 'chat-notification-toggle--enabled'
+              }`}
               onClick={() => toggleRoomNotifications(activeRoomId)}
               aria-pressed={activeRoomMuted}
               title={
@@ -746,9 +806,50 @@ export default function ChatPage() {
                           )}
                         </span>
                         <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
+                        <button
+                          type="button"
+                          className="chat-msg__reply-btn"
+                          onClick={() => startReply(msg)}
+                        >
+                          Ответить
+                        </button>
                       </div>
                     )}
                     <div className="chat-msg__bubble">
+                      {msg.reply_to && (
+                        <button
+                          type="button"
+                          className="chat-msg__reply-preview"
+                          onClick={() => {
+                            const replyTo = msg.reply_to
+                            if (!replyTo) return
+
+                            const replySource: MessageItem = {
+                              id: replyTo.id,
+                              room_id: msg.room_id,
+                              sender_id: replyTo.sender_id,
+                              content: replyTo.content,
+                              message_type: replyTo.message_type,
+                              image_url: replyTo.image_url,
+                              is_deleted: replyTo.is_deleted,
+                              created_at: msg.created_at,
+                              updated_at: msg.created_at,
+                              sender_username: replyTo.sender_username,
+                              sender_avatar_url: null,
+                              sender_sponsor_badge: null,
+                              reply_to: null,
+                            }
+                            startReply(replySource)
+                          }}
+                        >
+                          <span className="chat-msg__reply-author">
+                            {msg.reply_to.sender_username || 'Пользователь'}
+                          </span>
+                          <span className="chat-msg__reply-text">
+                            {replyPreviewText(msg.reply_to)}
+                          </span>
+                        </button>
+                      )}
                       {msg.message_type === 'image' && msg.image_url ? (
                         <img src={msg.image_url} alt="" className="chat-msg__img" />
                       ) : msg.content ? (
@@ -776,6 +877,27 @@ export default function ChatPage() {
                   title="Показать шапку чата"
                 >
                   ↑
+                </button>
+              </div>
+            )}
+
+            {replyToMessage && (
+              <div className="chat-reply-bar">
+                <div className="chat-reply-bar__content">
+                  <span className="chat-reply-bar__label">
+                    Ответ на {replyToMessage.sender_username || 'сообщение'}
+                  </span>
+                  <span className="chat-reply-bar__text">
+                    {replyPreviewText(replyToMessage)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="chat-reply-bar__close"
+                  onClick={cancelReply}
+                  aria-label="Отменить ответ"
+                >
+                  ×
                 </button>
               </div>
             )}
