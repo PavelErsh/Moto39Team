@@ -179,6 +179,24 @@ export default function ChatPage() {
   }, [user?.id])  // activeRoomId берём из ref, user нужен для фильтрации своих сообщений
 
   useEffect(() => {
+    const root = document.documentElement
+
+    const updateAppVh = () => {
+      root.style.setProperty('--app-vh', `${window.innerHeight * 0.01}px`)
+    }
+
+    updateAppVh()
+    window.addEventListener('resize', updateAppVh)
+    window.addEventListener('orientationchange', updateAppVh)
+
+    return () => {
+      window.removeEventListener('resize', updateAppVh)
+      window.removeEventListener('orientationchange', updateAppVh)
+      root.style.removeProperty('--app-vh')
+    }
+  }, [])
+
+  useEffect(() => {
     connectWs()
     apiListRooms()
       .then(setRooms)

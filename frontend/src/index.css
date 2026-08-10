@@ -200,10 +200,12 @@ img.emoji {
   padding-top: 0;
   padding-bottom: 0;
   overflow: hidden;
+  min-height: calc(var(--app-vh, 1vh) * 100);
 }
 
 .container--chat {
   height: 100%;
+  min-height: calc(var(--app-vh, 1vh) * 100);
 }
 
 /* ================= HEADER ================= */
@@ -3394,6 +3396,7 @@ html.low-end .nav-user:hover {
   /* Занимаем всю доступную высоту внутри main, чтобы
      conversation мог растянуться на flex:1 */
   height: 100%;
+  min-height: calc(var(--app-vh, 1vh) * 100);
 }
 
 .chat-page__head {
@@ -3551,11 +3554,7 @@ html.low-end .nav-user:hover {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  /* fallback для браузеров без поддержки dvh */
-  height: calc(100vh - 60px - var(--chat-keyboard-offset));
-  /* Используем dvh чтобы клавиатура не перекрывала поле ввода;
-     60px — высота site-header, остальное пространство отдаём чату */
-  height: calc(100dvh - 60px - var(--chat-keyboard-offset));
+  height: calc(var(--app-vh, 1vh) * 100 - 60px);
   min-height: 400px;
   position: relative;
 }
@@ -3748,6 +3747,7 @@ html.low-end .nav-user:hover {
   z-index: 8;
   background: linear-gradient(180deg, rgba(5, 7, 5, 0) 0%, rgba(5, 7, 5, 0.94) 28%, #050705 58%);
   padding-top: 8px;
+  transform: translateZ(0);
 }
 
 /* ── Поле ввода ─────────────────────────────────────── */
@@ -3764,6 +3764,7 @@ html.low-end .nav-user:hover {
   flex-shrink: 0;
   background: #050705;
   box-shadow: 0 -10px 24px rgba(5, 7, 5, 0.75);
+  transform: translateZ(0);
 }
 
 .chat-conversation__header-toggle-wrap {
