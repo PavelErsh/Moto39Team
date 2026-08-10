@@ -57,6 +57,7 @@ export default function ChatPage() {
   const [view, setView] = useState<View>('list')
   const [searchParams] = useSearchParams()
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [isComposerFocused, setIsComposerFocused] = useState(false)
 
   // Комнаты
   const [rooms, setRooms] = useState<ChatRoomItem[]>([])
@@ -627,12 +628,28 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {(isKeyboardOpen || isComposerFocused) && (
+            <div className="chat-conversation__header-toggle-wrap">
+              <button
+                type="button"
+                className="chat-conversation__header-toggle"
+                onClick={scrollToConversationHeader}
+                aria-label="Показать шапку чата"
+                title="Показать шапку чата"
+              >
+                ↑
+              </button>
+            </div>
+          )}
+
           <form className="chat-input" onSubmit={sendMessage}>
             <textarea
               ref={draftInputRef}
               className="chat-input__textarea"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onFocus={() => setIsComposerFocused(true)}
+              onBlur={() => setIsComposerFocused(false)}
               onKeyDown={onKeyDown}
               placeholder="Сообщение…"
               rows={1}
@@ -648,18 +665,6 @@ export default function ChatPage() {
               →
             </button>
           </form>
-
-          {isKeyboardOpen && (
-            <button
-              type="button"
-              className="chat-conversation__header-toggle"
-              onClick={scrollToConversationHeader}
-              aria-label="Показать шапку чата"
-              title="Показать шапку чата"
-            >
-              ↑
-            </button>
-          )}
         </div>
       )}
 

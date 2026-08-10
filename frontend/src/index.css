@@ -3754,10 +3754,14 @@ html.low-end .nav-user:hover {
   background: #050705;
 }
 
+.chat-conversation__header-toggle-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0 6px;
+  flex-shrink: 0;
+}
+
 .chat-conversation__header-toggle {
-  position: fixed;
-  right: 16px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
   width: 42px;
   height: 42px;
   border: 1px solid var(--accent);
@@ -3771,7 +3775,6 @@ html.low-end .nav-user:hover {
   line-height: 1;
   cursor: pointer;
   box-shadow: 0 0 0 1px rgba(57, 255, 20, 0.18), 0 6px 20px rgba(0, 0, 0, 0.35);
-  z-index: 30;
   transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
@@ -3790,9 +3793,11 @@ html.low-end .nav-user:hover {
 }
 
 @media (max-width: 760px) {
+  .chat-conversation__header-toggle-wrap {
+    padding: 8px 0 4px;
+  }
+
   .chat-conversation__header-toggle {
-    right: 12px;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
     width: 40px;
     height: 40px;
   }
