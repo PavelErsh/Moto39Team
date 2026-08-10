@@ -3757,7 +3757,7 @@ html.low-end .nav-user:hover {
 .chat-conversation__header-toggle {
   position: fixed;
   right: 16px;
-  bottom: calc(var(--chat-keyboard-offset) + env(safe-area-inset-bottom, 0px) + 76px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
   width: 42px;
   height: 42px;
   border: 1px solid var(--accent);
@@ -3792,7 +3792,7 @@ html.low-end .nav-user:hover {
 @media (max-width: 760px) {
   .chat-conversation__header-toggle {
     right: 12px;
-    bottom: calc(var(--chat-keyboard-offset) + env(safe-area-inset-bottom, 0px) + 72px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
     width: 40px;
     height: 40px;
   }
