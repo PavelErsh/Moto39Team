@@ -21,6 +21,7 @@ class MessageRead(BaseModel):
     sender_avatar_url: str | None = None
     sender_sponsor_badge: str | None = None
     reply_to: "ReplyMessageRead | None" = None
+    reactions: list["MessageReactionRead"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +45,18 @@ class ReplyMessageRead(BaseModel):
     is_deleted: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MessageReactionRead(BaseModel):
+    """Агрегированная реакция на сообщение."""
+    emoji: str
+    count: int
+    reacted_by_me: bool = False
+
+
+class MessageReactionToggle(BaseModel):
+    """Поставить/снять реакцию на сообщение."""
+    emoji: str = Field(min_length=1, max_length=16)
 
 
 # ── Комната ────────────────────────────────────────────────────
@@ -101,23 +114,25 @@ class MemberAddRemove(BaseModel):
 
 class WsIncoming(BaseModel):
     """Входящее WebSocket-сообщение от клиента."""
-    type: str  # "join" | "leave" | "message" | "typing" | "read"
+    type: str  # "join" | "leave" | "message" | "typing" | "read" | "reaction"
     room_id: int | None = None
     content: str | None = None
     message_type: str | None = None  # "text" | "image"
     image_url: str | None = None
     message_id: int | None = None  # для type="read"
     reply_to_message_id: int | None = None
+    emoji: str | None = None
 
 
 class WsOutgoing(BaseModel):
     """Исходящее WebSocket-сообщение клиенту."""
-    type: str  # "message" | "typing" | "system" | "error" | "read"
+    type: str  # "message" | "typing" | "system" | "error" | "read" | "reaction"
     room_id: int | None = None
     message: MessageRead | None = None
     user_id: int | None = None
     username: str | None = None
     error: str | None = None
+    message_id: int | None = None
 
 
 # ── Уведомления ────────────────────────────────────────────────

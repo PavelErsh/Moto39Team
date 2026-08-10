@@ -22,6 +22,7 @@ from app.schemas.chat import (
     ChatRoomCreate,
     ChatRoomDetail,
     ChatRoomRead,
+    MessageReactionRead,
     MemberAddRemove,
     MessageCreate,
     MessageRead,
@@ -71,7 +72,7 @@ def _room_to_read(room: ChatRoom, user_id: int, unread_counts: dict[int, int] | 
     last_msg = None
     if room.messages:
         m = room.messages[0]  # самая новая (LIMIT 1, desc)
-        last_msg = _message_to_read(m)
+        last_msg = _message_to_read_for_user(m, user_id)
 
     unread = unread_counts.get(room.id, 0) if unread_counts else 0
     current_member = next((member for member in room.members if member.user_id == user_id), None)
@@ -101,10 +102,15 @@ def _dm_partner_name(room: ChatRoom, current_user_id: int) -> str | None:
     return None
 
 
-def _message_to_read(msg) -> MessageRead:
-    """Преобразовать ORM-сообщение в схему."""
+def _message_to_read_for_user(msg, current_user_id: int) -> MessageRead:
+    """Преобразовать ORM-сообщение в схему с учётом текущего пользователя."""
     sender = getattr(msg, "sender", None)
     reply_to = getattr(msg, "reply_to", None)
+    reactions = getattr(msg, "reactions", []) or []
+    grouped_reactions: dict[str, set[int]] = {}
+    for reaction in reactions:
+        grouped_reactions.setdefault(reaction.emoji, set()).add(reaction.user_id)
+
     return MessageRead(
         id=msg.id,
         room_id=msg.room_id,
@@ -131,6 +137,14 @@ def _message_to_read(msg) -> MessageRead:
             if reply_to is not None
             else None
         ),
+        reactions=[
+            {
+                "emoji": emoji,
+                "count": len(user_ids),
+                "reacted_by_me": current_user_id in user_ids,
+            }
+            for emoji, user_ids in grouped_reactions.items()
+        ],
     )
 
 
@@ -343,7 +357,7 @@ async def list_messages(
         db, room_id, before_id=before_id, limit=limit
     )
     # get_room_messages возвращает DESC, переворачиваем для хронологического порядка
-    return [_message_to_read(m) for m in reversed(messages)]
+    return [_message_to_read_for_user(m, current_user.id) for m in reversed(messages)]
 
 
 @router.post("/rooms/{room_id}/read", response_model=dict)
@@ -520,7 +534,7 @@ async def chat_websocket(websocket: WebSocket):
                 saved = await chat_crud.save_message(
                     session, msg.room_id, user_id, msg_data
                 )
-                msg_read = _message_to_read(saved)
+                msg_read = _message_to_read_for_user(saved, user_id)
 
                 # Рассылаем всем в комнате (через Redis или локально)
                 outgoing = WsOutgoing(
@@ -593,6 +607,49 @@ async def chat_websocket(websocket: WebSocket):
                             "user_id": user_id,
                             "username": user.username,
                         },
+                    )
+
+            elif msg.type == "reaction":
+                if not msg.room_id or not msg.message_id or not msg.emoji:
+                    continue
+                if not await chat_crud.is_member(session, msg.room_id, user_id):
+                    await websocket.send_json(
+                        {"type": "error", "error": "Вы не участник комнаты"}
+                    )
+                    continue
+
+                updated_message = await chat_crud.toggle_message_reaction(
+                    session,
+                    msg.room_id,
+                    msg.message_id,
+                    user_id,
+                    msg.emoji,
+                )
+                if not updated_message:
+                    await websocket.send_json(
+                        {"type": "error", "error": "Сообщение не найдено"}
+                    )
+                    continue
+
+                outgoing = WsOutgoing(
+                    type="reaction",
+                    room_id=msg.room_id,
+                    message_id=msg.message_id,
+                    message=_message_to_read_for_user(updated_message, user_id),
+                )
+                room = await chat_crud.get_room(session, msg.room_id)
+                if not room:
+                    continue
+                for member in room.members:
+                    personalized = WsOutgoing(
+                        type="reaction",
+                        room_id=msg.room_id,
+                        message_id=msg.message_id,
+                        message=_message_to_read_for_user(updated_message, member.user_id),
+                    )
+                    await notify_user(
+                        member.user_id,
+                        personalized.model_dump(mode="json"),
                     )
 
             elif msg.type == "read":

@@ -1,11 +1,11 @@
 """CRUD-операции для чата."""
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.chat import ChatMember, ChatRoom, Message
+from app.models.chat import ChatMember, ChatRoom, Message, MessageReaction
 from app.models.user import User
 from app.schemas.chat import ChatRoomCreate, MessageCreate
 
@@ -254,6 +254,7 @@ async def get_room_messages(
         .options(
             selectinload(Message.sender),
             selectinload(Message.reply_to).selectinload(Message.sender),
+            selectinload(Message.reactions),
         )
         .where(Message.room_id == room_id)
         .order_by(Message.created_at.desc())
@@ -280,6 +281,7 @@ async def get_room_message(
         .options(
             selectinload(Message.sender),
             selectinload(Message.reply_to).selectinload(Message.sender),
+            selectinload(Message.reactions),
         )
         .where(
             Message.id == message_id,
@@ -287,6 +289,34 @@ async def get_room_message(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def toggle_message_reaction(
+    db: AsyncSession, room_id: int, message_id: int, user_id: int, emoji: str
+) -> Message | None:
+    """Поставить/снять реакцию на сообщение и вернуть обновлённое сообщение."""
+    message = await get_room_message(db, room_id, message_id)
+    if not message:
+        return None
+
+    existing = await db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message_id,
+            MessageReaction.user_id == user_id,
+            MessageReaction.emoji == emoji,
+        )
+    )
+    reaction = existing.scalar_one_or_none()
+
+    if reaction:
+        await db.execute(
+            delete(MessageReaction).where(MessageReaction.id == reaction.id)
+        )
+    else:
+        db.add(MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
+
+    await db.commit()
+    return await get_room_message(db, room_id, message_id)
 
 
 async def mark_read(

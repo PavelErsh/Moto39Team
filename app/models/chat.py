@@ -1,7 +1,7 @@
 """Модели чата: комнаты, участники, сообщения."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -111,3 +111,33 @@ class Message(Base):
     room: Mapped["ChatRoom"] = relationship("ChatRoom", back_populates="messages")
     sender = relationship("User")
     reply_to = relationship("Message", remote_side=[id], lazy="selectin")
+    reactions: Mapped[list["MessageReaction"]] = relationship(
+        "MessageReaction",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class MessageReaction(Base):
+    """Реакция пользователя на сообщение."""
+
+    __tablename__ = "message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_message_reaction"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    message_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    message: Mapped["Message"] = relationship("Message", back_populates="reactions")
+    user = relationship("User")
