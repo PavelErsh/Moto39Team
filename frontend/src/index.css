@@ -3751,7 +3751,11 @@ html.low-end .nav-user:hover {
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 8;
   background: #050705;
+  box-shadow: 0 -10px 24px rgba(5, 7, 5, 0.75);
 }
 
 .chat-conversation__header-toggle-wrap {
@@ -3760,6 +3764,10 @@ html.low-end .nav-user:hover {
   margin-left: auto;
   padding: 8px 0 6px;
   flex-shrink: 0;
+  position: sticky;
+  bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  z-index: 7;
+  background: linear-gradient(180deg, rgba(5, 7, 5, 0), rgba(5, 7, 5, 0.92) 55%);
 }
 
 .chat-conversation__header-toggle {
@@ -3796,6 +3804,7 @@ html.low-end .nav-user:hover {
 @media (max-width: 760px) {
   .chat-conversation__header-toggle-wrap {
     padding: 8px 0 4px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
   .chat-conversation__header-toggle {
