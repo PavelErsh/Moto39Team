@@ -42,6 +42,7 @@ export interface MessageItem {
   sender_avatar_url: string | null
   sender_sponsor_badge: string | null
   reply_to: ReplyMessageItem | null
+  reactions: MessageReactionItem[]
 }
 
 export interface ReplyMessageItem {
@@ -52,6 +53,12 @@ export interface ReplyMessageItem {
   message_type: string
   image_url: string | null
   is_deleted: boolean
+}
+
+export interface MessageReactionItem {
+  emoji: string
+  count: number
+  reacted_by_me: boolean
 }
 
 export interface UnreadCounts {

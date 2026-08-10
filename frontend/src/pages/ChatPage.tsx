@@ -13,6 +13,7 @@ import {
   type ChatRoomItem,
   type ChatRoomDetail,
   type MessageItem,
+  type MessageReactionItem,
   type ReplyMessageItem,
 } from '../api/chat'
 import { apiListUsers } from '../api/motorcycles'
@@ -23,6 +24,7 @@ import { notify } from '../utils/notifications'
 
 // WebSocket URL — использует тот же хост что и страница
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/v1/chat/ws`
+const QUICK_REACTIONS = ['👍', '❤️', '🔥', '😂', '👏', '😮']
 
 // ── Форматирование времени ──────────────────────────────────────
 
@@ -109,6 +111,7 @@ export default function ChatPage() {
   // Отправка сообщения
   const [draft, setDraft] = useState('')
   const [replyToMessage, setReplyToMessage] = useState<MessageItem | null>(null)
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
@@ -187,6 +190,14 @@ export default function ChatPage() {
               })
             }
           }
+        } else if (data.type === 'reaction') {
+          const message = data.message as MessageItem | undefined
+          const messageId = data.message_id as number | undefined
+          if (!message || !messageId) return
+
+          setMessages((prev) =>
+            prev.map((item) => (item.id === messageId ? { ...item, reactions: message.reactions } : item)),
+          )
         }
       } catch { /* ignore */ }
     }
@@ -451,6 +462,7 @@ export default function ChatPage() {
       sender_avatar_url: user?.avatar_url ?? null,
       sender_sponsor_badge: user?.sponsor_badge ?? null,
       reply_to: replyToMessage ? toReplyMessageItem(replyToMessage) : null,
+      reactions: [],
     }
     setMessages((prev) => [...prev, optimisticMsg])
     setDraft('')
@@ -656,6 +668,17 @@ export default function ChatPage() {
     setReplyToMessage(null)
   }, [])
 
+  const toggleReaction = useCallback((messageId: number, emoji: string) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN || !activeRoomId) return
+    wsRef.current.send(JSON.stringify({
+      type: 'reaction',
+      room_id: activeRoomId,
+      message_id: messageId,
+      emoji,
+    }))
+    setReactionPickerMessageId(null)
+  }, [activeRoomId])
+
   return (
     <section className="chat-page">
       {/* ── Список комнат ──────────────────────────────────── */}
@@ -838,6 +861,7 @@ export default function ChatPage() {
                               sender_avatar_url: null,
                               sender_sponsor_badge: null,
                               reply_to: null,
+                              reactions: [],
                             }
                             startReply(replySource)
                           }}
@@ -858,6 +882,44 @@ export default function ChatPage() {
                       ) : null}
                       {msg.is_deleted && (
                         <em className="muted">Сообщение удалено</em>
+                      )}
+                      <div className="chat-msg__actions">
+                        <button
+                          type="button"
+                          className="chat-msg__emoji-btn"
+                          onClick={() => setReactionPickerMessageId((prev) => (prev === msg.id ? null : msg.id))}
+                        >
+                          😊
+                        </button>
+                      </div>
+                      {reactionPickerMessageId === msg.id && (
+                        <div className="chat-msg__reaction-picker">
+                          {QUICK_REACTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className="chat-msg__reaction-option"
+                              onClick={() => toggleReaction(msg.id, emoji)}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {msg.reactions.length > 0 && (
+                        <div className="chat-msg__reactions">
+                          {msg.reactions.map((reaction: MessageReactionItem) => (
+                            <button
+                              key={`${msg.id}-${reaction.emoji}`}
+                              type="button"
+                              className={`chat-msg__reaction-chip ${reaction.reacted_by_me ? 'is-active' : ''}`}
+                              onClick={() => toggleReaction(msg.id, reaction.emoji)}
+                            >
+                              <span>{reaction.emoji}</span>
+                              <span>{reaction.count}</span>
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

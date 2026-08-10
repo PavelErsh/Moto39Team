@@ -3891,6 +3891,54 @@ html.low-end .nav-user:hover {
   color: var(--text);
 }
 
+.chat-msg__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.chat-msg__emoji-btn {
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.chat-msg__reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-msg__reaction-option,
+.chat-msg__reaction-chip {
+  border: 1px solid var(--border-hot);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.chat-msg__reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-msg__reaction-chip.is-active {
+  border-color: rgba(57, 255, 20, 0.5);
+  background: rgba(57, 255, 20, 0.12);
+  color: var(--accent-2);
+}
+
 .chat-msg__img {
   max-width: 240px;
   max-height: 240px;
