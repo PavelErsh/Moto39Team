@@ -196,27 +196,29 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return
 
-  let payload
-  try {
-    payload = event.data.json()
-  } catch {
-    // Не JSON — не показываем
-    return
-  }
-
-  const title = payload.title || 'MOTO39'
-  const options = {
-    body: payload.body || '',
-    icon: payload.icon || '/icon-192.png',
-    badge: payload.badge || '/icon-192.png',
-    tag: payload.tag || '',
-    data: payload.data || {},
-    requireInteraction: false,
-    vibrate: [200, 100, 200],
-  }
-
   event.waitUntil(
-    self.registration.showNotification(title, options),
+    (async () => {
+      let payload
+      try {
+        payload = event.data.json()
+      } catch {
+        // Не JSON — не показываем
+        return
+      }
+
+      const title = payload.title || 'MOTO39'
+      const options = {
+        body: payload.body || '',
+        icon: payload.icon || '/icon-192.png',
+        badge: payload.badge || '/icon-192.png',
+        tag: payload.tag || '',
+        data: payload.data || {},
+        requireInteraction: false,
+        vibrate: [200, 100, 200],
+      }
+
+      await self.registration.showNotification(title, options)
+    })(),
   )
 })
 

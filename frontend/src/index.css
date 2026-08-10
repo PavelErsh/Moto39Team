@@ -432,6 +432,25 @@ img.emoji {
   font-size: 14px;
   min-height: 38px;
 }
+
+.chat-room-muted-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-hot);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chat-notification-toggle {
+  margin-left: auto;
+  white-space: nowrap;
+}
 .btn-lg {
   padding: 18px 34px;
   font-size: 20px;

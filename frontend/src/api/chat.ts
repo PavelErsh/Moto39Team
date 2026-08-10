@@ -11,6 +11,7 @@ export interface ChatRoomItem {
   unread_count: number
   member_count: number
   dm_partner_name: string | null
+  notifications_enabled: boolean
 }
 
 export interface ChatRoomDetail extends ChatRoomItem {
@@ -103,5 +104,15 @@ export async function apiMarkRead(roomId: number, messageId: number): Promise<vo
 
 export async function apiGetUnread(): Promise<UnreadCounts> {
   const res = await api.get<UnreadCounts>('/chat/unread')
+  return res.data
+}
+
+export async function apiUpdateRoomNotifications(
+  roomId: number,
+  notificationsEnabled: boolean,
+): Promise<ChatRoomItem> {
+  const res = await api.put<ChatRoomItem>(`/chat/rooms/${roomId}/notifications`, {
+    notifications_enabled: notificationsEnabled,
+  })
   return res.data
 }

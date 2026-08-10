@@ -9,6 +9,7 @@ import {
   apiListRooms,
   apiMarkRead,
   apiGetUnread,
+  apiUpdateRoomNotifications,
   type ChatRoomItem,
   type ChatRoomDetail,
   type MessageItem,
@@ -76,6 +77,7 @@ export default function ChatPage() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const activeRoomIdRef = useRef<number | null>(null)
+  const roomsRef = useRef<ChatRoomItem[]>([])
   let wsRetryCount = 0  // сбрасывается при успешном подключении
 
   // Создание комнаты
@@ -152,15 +154,18 @@ export default function ChatPage() {
               ...prev,
               [msg.room_id]: (prev[msg.room_id] || 0) + 1,
             }))
-            // Показать нативное уведомление о новом сообщении
-            const sender = msg.sender_username || 'Кто-то'
-            const preview = (msg.content || '').slice(0, 120)
-            notify(`💬 ${sender}`, {
-              body: preview,
-              tag: `chat-room-${msg.room_id}`,
-              data: { url: `/chat?room=${msg.room_id}` },
-              channelId: 'chat',
-            })
+            const targetRoom = roomsRef.current.find((room) => room.id === msg.room_id)
+            if (targetRoom?.notifications_enabled !== false) {
+              // Показать нативное уведомление о новом сообщении
+              const sender = msg.sender_username || 'Кто-то'
+              const preview = (msg.content || '').slice(0, 120)
+              notify(`💬 ${sender}`, {
+                body: preview,
+                tag: `chat-room-${msg.room_id}`,
+                data: { url: `/chat?room=${msg.room_id}` },
+                channelId: 'chat',
+              })
+            }
           }
         }
       } catch { /* ignore */ }
@@ -213,6 +218,10 @@ export default function ChatPage() {
     }
   }, [connectWs])
 
+  useEffect(() => {
+    roomsRef.current = rooms
+  }, [rooms])
+
   // ── Навигация ─────────────────────────────────────────────────
 
   const openRoom = useCallback(async (roomId: number) => {
@@ -233,6 +242,7 @@ export default function ChatPage() {
         apiGetMessages(roomId),
       ])
       setActiveRoom(room)
+      setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
       setMessages(msgs)
       // Отметить прочитанным
       if (msgs.length > 0) {
@@ -531,7 +541,7 @@ export default function ChatPage() {
         member_ids: selectedUserIds,
       })
       setView('list')
-      setRooms((prev) => [room as any, ...prev])
+      setRooms((prev) => [room, ...prev])
     } catch (err) {
       setCreateError(extractApiError(err))
     } finally {
@@ -570,6 +580,23 @@ export default function ChatPage() {
     () => Object.values(unread).reduce((a, b) => a + b, 0),
     [unread],
   )
+
+  const activeRoomMuted = activeRoom?.notifications_enabled === false
+
+  const toggleRoomNotifications = useCallback(async (roomId: number) => {
+    const currentEnabled = activeRoom?.notifications_enabled ?? true
+    try {
+      const updatedRoom = await apiUpdateRoomNotifications(roomId, !currentEnabled)
+      setRooms((prev) => prev.map((room) => (room.id === roomId ? { ...room, ...updatedRoom } : room)))
+      setActiveRoom((prev) => (
+        prev && prev.id === roomId
+          ? { ...prev, notifications_enabled: updatedRoom.notifications_enabled }
+          : prev
+      ))
+    } catch {
+      // ignore
+    }
+  }, [activeRoom])
 
   return (
     <section className="chat-page">
@@ -618,6 +645,9 @@ export default function ChatPage() {
                     <div className="chat-room-body">
                       <div className="chat-room-top">
                         <span className="chat-room-name">{roomName(room)}</span>
+                        {room.notifications_enabled === false && (
+                          <span className="chat-room-muted-badge">Без звука</span>
+                        )}
                         {room.last_message && (
                           <span className="chat-room-time">
                             {fmtDate(room.last_message.created_at)}
@@ -662,6 +692,19 @@ export default function ChatPage() {
             <span className="chat-conversation__members">
               {activeRoom?.member_count ?? 0} участ.
             </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm chat-notification-toggle"
+              onClick={() => toggleRoomNotifications(activeRoomId)}
+              aria-pressed={activeRoomMuted}
+              title={
+                activeRoomMuted
+                  ? 'Включить уведомления для этого чата'
+                  : 'Отключить уведомления для этого чата'
+              }
+            >
+              {activeRoomMuted ? '🔕 Выкл.' : '🔔 Вкл.'}
+            </button>
           </header>
 
           <div
