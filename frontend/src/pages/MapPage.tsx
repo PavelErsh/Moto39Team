@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   apiListUserLocations,
   type UserLocation,
 } from '../api/motorcycles'
+import { apiCreateRoom } from '../api/chat'
 import {
   disableTracking,
   enableTracking,
@@ -285,10 +287,45 @@ function styleForRider(lastSeenIso: string): MarkerStyle {
   return STYLE_STALE
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function buildRiderPopupHtml(rider: UserLocation, title: string, badge: string | null): string {
+  const titleHtml = escapeHtml(title)
+  const usernameHtml = escapeHtml(rider.username)
+  const lastSeenHtml = escapeHtml(formatLastSeen(rider.last_seen_at))
+  const badgeHtml = badge
+    ? `<span class="map-rider-popup__badge map-rider-popup__badge--${escapeHtml(rider.emergency_status || 'default')}">${escapeHtml(badge)}</span>`
+    : ''
+
+  return `
+    <div class="map-rider-popup" data-rider-id="${rider.id}">
+      <div class="map-rider-popup__title-row">
+        <strong class="map-rider-popup__title">${titleHtml}</strong>
+        ${badgeHtml}
+      </div>
+      <button
+        type="button"
+        class="map-rider-popup__dm-btn"
+        data-map-dm-user-id="${rider.id}"
+        data-map-dm-username="${usernameHtml}"
+      >@${usernameHtml}</button>
+      <div class="map-rider-popup__meta">${lastSeenHtml}</div>
+    </div>
+  `.trim()
+}
+
 /* ------------------------------ Компонент ------------------------------ */
 
 export default function MapPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   // Собственный экстренный статус: перекрашивает мой маркер в цвет
   // соответствующей категории (SOS — красный, HELP — жёлтый) и
   // показывает постоянную подпись над меткой, чтобы автор точно видел,
@@ -318,6 +355,7 @@ export default function MapPage() {
   const meMarkerRef = useRef<any>(null)
   const accuracyCircleRef = useRef<any>(null)
   const firstFixAppliedRef = useRef(false)
+  const startingDmRef = useRef(false)
 
 
   // Отдельная коллекция маркеров других райдеров: userId -> marker
@@ -347,6 +385,44 @@ export default function MapPage() {
   const [trackingBusy, setTrackingBusy] = useState<boolean>(false)
   const [permanentTracking, setPermanentTracking] = useState<boolean>(
     () => isPermanentTrackingEnabled(),
+  )
+
+  const startDm = useCallback(
+    async (userId: number) => {
+      if (startingDmRef.current) return
+      startingDmRef.current = true
+      try {
+        const room = await apiCreateRoom({
+          room_type: 'dm',
+          member_ids: [userId],
+        })
+        navigate(`/chat?room=${room.id}`)
+      } catch {
+        navigate('/chat')
+      } finally {
+        startingDmRef.current = false
+      }
+    },
+    [navigate],
+  )
+
+  const bindPopupDmHandler = useCallback(
+    (root: ParentNode | null) => {
+      if (!root) return
+      const button = root.querySelector<HTMLElement>('[data-map-dm-user-id]')
+      if (!button || button.dataset.mapDmBound === '1') return
+      button.dataset.mapDmBound = '1'
+      button.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const rawId = button.getAttribute('data-map-dm-user-id')
+        const userId = rawId ? Number.parseInt(rawId, 10) : NaN
+        if (!Number.isNaN(userId)) {
+          void startDm(userId)
+        }
+      })
+    },
+    [startDm],
   )
 
 
@@ -833,6 +909,7 @@ export default function MapPage() {
           }`
         : 'map-emergency-badge'
       const label = (badge ? `[${badge}] ` : '') + `${title} · @${r.username} · ${formatLastSeen(r.last_seen_at)}`
+      const popupHtml = buildRiderPopupHtml(r, title, badge)
       // Цвет метки зависит от времени последнего обновления координат.
       // Экстренные статусы (help/sos/riding) переопределяют стандартную раскраску.
       let style: MarkerStyle
@@ -856,7 +933,7 @@ export default function MapPage() {
           const placemark = new ymaps.Placemark(
             point,
             {
-              balloonContent: label,
+              balloonContent: popupHtml,
               hintContent: badge ? `[${badge}] ${title}` : title,
               iconContent: badge || (title[0] || '?').toUpperCase(),
             },
@@ -865,12 +942,18 @@ export default function MapPage() {
               iconColor: style.yandexIconColor,
             },
           )
+          placemark.events.add('balloonopen', () => {
+            window.setTimeout(() => {
+              const root = document.querySelector('.ymaps-2-1-79-balloon__content')
+              bindPopupDmHandler(root)
+            }, 0)
+          })
           map.geoObjects.add(placemark)
           markers.set(r.id, placemark)
         } else {
           existing.geometry.setCoordinates(point)
           existing.properties.set({
-            balloonContent: label,
+            balloonContent: popupHtml,
             hintContent: badge ? `[${badge}] ${title}` : title,
             iconContent: badge || (title[0] || '?').toUpperCase(),
           })
@@ -913,7 +996,10 @@ export default function MapPage() {
               offset: [0, -6],
             })
           }
-          marker.bindPopup(label)
+          marker.bindPopup(popupHtml)
+          marker.on('popupopen', (event: any) => {
+            bindPopupDmHandler(event.popup?.getElement() ?? null)
+          })
 
           markers.set(r.id, marker)
         } else {
@@ -939,13 +1025,13 @@ export default function MapPage() {
               offset: [0, -6],
             })
           }
-          existing.setPopupContent(label)
+          existing.setPopupContent(popupHtml)
 
         }
 
       }
     }
-  }, [riders, ready])
+  }, [bindPopupDmHandler, riders, ready])
 
   const centerOnMe = () => {
     const map = mapRef.current
