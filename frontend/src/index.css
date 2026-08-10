@@ -3373,6 +3373,7 @@ html.low-end .nav-user:hover {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  width: 100%;
   max-width: 780px;
   margin: 0 auto;
   /* Занимаем всю доступную высоту внутри main, чтобы
@@ -3537,6 +3538,8 @@ body:has(.chat-page) .main {
 .chat-conversation {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   /* fallback для браузеров без поддержки dvh */
   height: calc(100vh - 60px);
   /* Используем dvh чтобы клавиатура не перекрывала поле ввода;
@@ -3566,6 +3569,7 @@ body:has(.chat-page) .main {
   letter-spacing: 0.03em;
   color: var(--text);
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3575,6 +3579,9 @@ body:has(.chat-page) .main {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3679,6 +3686,8 @@ body:has(.chat-page) .main {
   display: flex;
   align-items: flex-end;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
   padding: 8px 0;
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
@@ -3687,6 +3696,7 @@ body:has(.chat-page) .main {
 
 .chat-input__textarea {
   flex: 1;
+  min-width: 0;
   resize: none;
   background: var(--panel);
   border: 1px solid var(--border-hot);
@@ -3712,6 +3722,33 @@ body:has(.chat-page) .main {
   min-height: 44px;
   font-size: 22px;
   line-height: 1;
+}
+
+@media (max-width: 420px) {
+  .chat-conversation__head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .chat-conversation__head .btn-ghost {
+    min-height: 38px;
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+
+  .chat-conversation__title {
+    font-size: 18px;
+    line-height: 1.1;
+  }
+
+  .chat-conversation__members {
+    flex: 0 0 100%;
+    order: 3;
+    padding-left: 50px;
+    font-size: 11px;
+  }
 }
 
 /* ── Создание комнаты ───────────────────────────────── */
