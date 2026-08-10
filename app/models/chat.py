@@ -66,6 +66,9 @@ class ChatMember(Base):
     last_read_message_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+    notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
 
     room: Mapped["ChatRoom"] = relationship("ChatRoom", back_populates="members")
     user = relationship("User")
@@ -83,6 +86,9 @@ class Message(Base):
     )
     sender_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reply_to_message_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
     )
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     message_type: Mapped[str] = mapped_column(
@@ -104,3 +110,4 @@ class Message(Base):
 
     room: Mapped["ChatRoom"] = relationship("ChatRoom", back_populates="messages")
     sender = relationship("User")
+    reply_to = relationship("Message", remote_side=[id], lazy="selectin")

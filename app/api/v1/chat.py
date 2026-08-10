@@ -17,6 +17,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.crud import chat as chat_crud
 from app.models.chat import ChatMember, ChatRoom
 from app.schemas.chat import (
+    ChatRoomNotificationsUpdate,
     ChatMemberRead,
     ChatRoomCreate,
     ChatRoomDetail,
@@ -24,6 +25,7 @@ from app.schemas.chat import (
     MemberAddRemove,
     MessageCreate,
     MessageRead,
+    ReplyMessageRead,
     UnreadCounts,
     WsIncoming,
     WsOutgoing,
@@ -72,6 +74,7 @@ def _room_to_read(room: ChatRoom, user_id: int, unread_counts: dict[int, int] | 
         last_msg = _message_to_read(m)
 
     unread = unread_counts.get(room.id, 0) if unread_counts else 0
+    current_member = next((member for member in room.members if member.user_id == user_id), None)
 
     return ChatRoomRead(
         id=room.id,
@@ -84,6 +87,7 @@ def _room_to_read(room: ChatRoom, user_id: int, unread_counts: dict[int, int] | 
         unread_count=unread,
         member_count=len(room.members),
         dm_partner_name=_dm_partner_name(room, user_id),
+        notifications_enabled=current_member.notifications_enabled if current_member else True,
     )
 
 
@@ -100,6 +104,7 @@ def _dm_partner_name(room: ChatRoom, current_user_id: int) -> str | None:
 def _message_to_read(msg) -> MessageRead:
     """Преобразовать ORM-сообщение в схему."""
     sender = getattr(msg, "sender", None)
+    reply_to = getattr(msg, "reply_to", None)
     return MessageRead(
         id=msg.id,
         room_id=msg.room_id,
@@ -113,6 +118,19 @@ def _message_to_read(msg) -> MessageRead:
         sender_username=sender.username if sender else None,
         sender_avatar_url=sender.avatar_url if sender else None,
         sender_sponsor_badge=sender.sponsor_badge if sender else None,
+        reply_to=(
+            ReplyMessageRead(
+                id=reply_to.id,
+                sender_id=reply_to.sender_id,
+                sender_username=reply_to.sender.username if reply_to.sender else None,
+                content=reply_to.content,
+                message_type=reply_to.message_type,
+                image_url=reply_to.image_url,
+                is_deleted=reply_to.is_deleted,
+            )
+            if reply_to is not None
+            else None
+        ),
     )
 
 
@@ -185,6 +203,8 @@ async def create_room(
                 last_message=None,
                 unread_count=0,
                 member_count=len(room.members),
+                dm_partner_name=_dm_partner_name(room, current_user.id),
+                notifications_enabled=True,
                 members=[_member_to_read(m) for m in room.members],
             )
 
@@ -202,6 +222,8 @@ async def create_room(
         last_message=None,
         unread_count=0,
         member_count=len(room.members),
+        dm_partner_name=_dm_partner_name(room, current_user.id),
+        notifications_enabled=True,
         members=[_member_to_read(m) for m in room.members],
     )
 
@@ -228,8 +250,38 @@ async def get_room_detail(
         last_message=None,
         unread_count=0,
         member_count=len(room.members),
+        dm_partner_name=_dm_partner_name(room, current_user.id),
+        notifications_enabled=next(
+            (member.notifications_enabled for member in room.members if member.user_id == current_user.id),
+            True,
+        ),
         members=[_member_to_read(m) for m in room.members],
     )
+
+
+@router.put("/rooms/{room_id}/notifications", response_model=ChatRoomRead)
+async def update_room_notifications(
+    room_id: int,
+    data: ChatRoomNotificationsUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ChatRoomRead:
+    """Обновить настройку уведомлений пользователя для комнаты."""
+    member = await chat_crud.get_member(db, room_id, current_user.id)
+    if not member:
+        raise HTTPException(403, "Вы не участник этой комнаты")
+
+    await chat_crud.set_notifications_enabled(
+        db,
+        room_id,
+        current_user.id,
+        data.notifications_enabled,
+    )
+    room = await chat_crud.get_room(db, room_id)
+    if not room:
+        raise HTTPException(404, "Комната не найдена")
+    unread_counts = await chat_crud.get_unread_counts(db, current_user.id)
+    return _room_to_read(room, current_user.id, unread_counts)
 
 
 # ── REST: Участники ─────────────────────────────────────────────
@@ -445,10 +497,25 @@ async def chat_websocket(websocket: WebSocket):
                     continue
 
                 # Сохраняем в БД
+                reply_to_message_id = msg.reply_to_message_id
+                if reply_to_message_id is not None:
+                    reply_target = await chat_crud.get_room_message(
+                        session, msg.room_id, reply_to_message_id
+                    )
+                    if not reply_target:
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "error": "Сообщение для ответа не найдено",
+                            }
+                        )
+                        continue
+
                 msg_data = MessageCreate(
                     content=sanitized_content,
                     message_type=msg.message_type or "text",
                     image_url=msg.image_url,
+                    reply_to_message_id=reply_to_message_id,
                 )
                 saved = await chat_crud.save_message(
                     session, msg.room_id, user_id, msg_data
@@ -491,29 +558,30 @@ async def chat_websocket(websocket: WebSocket):
                             # что пользователь смотрит на экран. На заблокированном
                             # телефоне / в фоне JS может быть уснувшим, а системный
                             # push всё равно нужен.
-                            try:
-                                subs = await get_subscriptions_for_user(
-                                    session, member.user_id
-                                )
-                                for sub in subs:
-                                    await push_service.send(
-                                        endpoint=sub.endpoint,
-                                        p256dh=sub.p256dh,
-                                        auth=sub.auth,
-                                        payload=PushPayload(
-                                            title=f"💬 {user.username}",
-                                            body=(msg.content or "")[:120],
-                                            tag=f"chat-room-{msg.room_id}",
-                                            url=f"/chat?room={msg.room_id}",
-                                            data={
-                                                "type": "new_message",
-                                                "room_id": msg.room_id,
-                                                "sender_id": user_id,
-                                            },
-                                        ),
+                            if member.notifications_enabled:
+                                try:
+                                    subs = await get_subscriptions_for_user(
+                                        session, member.user_id
                                     )
-                            except Exception:
-                                pass  # не блокируем отправку сообщения из-за ошибки push
+                                    for sub in subs:
+                                        await push_service.send(
+                                            endpoint=sub.endpoint,
+                                            p256dh=sub.p256dh,
+                                            auth=sub.auth,
+                                            payload=PushPayload(
+                                                title=f"💬 {user.username}",
+                                                body=(msg.content or "")[:120],
+                                                tag=f"chat-room-{msg.room_id}",
+                                                url=f"/chat?room={msg.room_id}",
+                                                data={
+                                                    "type": "new_message",
+                                                    "room_id": msg.room_id,
+                                                    "sender_id": user_id,
+                                                },
+                                            ),
+                                        )
+                                except Exception:
+                                    pass  # не блокируем отправку сообщения из-за ошибки push
 
             elif msg.type == "typing":
                 if msg.room_id:

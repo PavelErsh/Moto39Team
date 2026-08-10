@@ -59,6 +59,7 @@ async def find_dm_room(
 async def get_room(db: AsyncSession, room_id: int) -> ChatRoom | None:
     result = await db.execute(
         select(ChatRoom)
+        .execution_options(populate_existing=True)
         .options(selectinload(ChatRoom.members).selectinload(ChatMember.user))
         .where(ChatRoom.id == room_id)
     )
@@ -76,6 +77,7 @@ async def get_user_rooms(
     )
     result = await db.execute(
         select(ChatRoom)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(ChatRoom.members).selectinload(ChatMember.user),
             selectinload(ChatRoom.messages),
@@ -132,12 +134,43 @@ async def remove_members(
 async def is_member(db: AsyncSession, room_id: int, user_id: int) -> bool:
     """Проверить, состоит ли пользователь в комнате."""
     result = await db.execute(
-        select(ChatMember).where(
+        select(ChatMember)
+        .execution_options(populate_existing=True)
+        .where(
             ChatMember.room_id == room_id,
             ChatMember.user_id == user_id,
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+async def get_member(
+    db: AsyncSession, room_id: int, user_id: int
+) -> ChatMember | None:
+    """Получить запись участника комнаты для пользователя."""
+    result = await db.execute(
+        select(ChatMember).where(
+            ChatMember.room_id == room_id,
+            ChatMember.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def set_notifications_enabled(
+    db: AsyncSession, room_id: int, user_id: int, enabled: bool
+) -> ChatMember | None:
+    """Включить/выключить уведомления пользователя для комнаты."""
+    await db.execute(
+        update(ChatMember)
+        .where(
+            ChatMember.room_id == room_id,
+            ChatMember.user_id == user_id,
+        )
+        .values(notifications_enabled=enabled)
+    )
+    await db.commit()
+    return await get_member(db, room_id, user_id)
 
 
 # ── Сообщения ───────────────────────────────────────────────────
@@ -171,6 +204,7 @@ async def save_message(
     msg = Message(
         room_id=room_id,
         sender_id=sender_id,
+        reply_to_message_id=data.reply_to_message_id,
         content=data.content,
         message_type=data.message_type,
         image_url=data.image_url,
@@ -193,6 +227,17 @@ async def save_message(
     if sender:
         msg.sender = sender
 
+    if msg.reply_to_message_id is not None:
+        reply_result = await db.execute(
+            select(Message)
+            .options(selectinload(Message.sender))
+            .where(
+                Message.id == msg.reply_to_message_id,
+                Message.room_id == room_id,
+            )
+        )
+        msg.reply_to = reply_result.scalar_one_or_none()
+
     return msg
 
 
@@ -206,7 +251,10 @@ async def get_room_messages(
     """Получить сообщения комнаты (пагинация назад)."""
     stmt = (
         select(Message)
-        .options(selectinload(Message.sender))
+        .options(
+            selectinload(Message.sender),
+            selectinload(Message.reply_to).selectinload(Message.sender),
+        )
         .where(Message.room_id == room_id)
         .order_by(Message.created_at.desc())
     )
@@ -221,6 +269,24 @@ async def get_room_messages(
     stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_room_message(
+    db: AsyncSession, room_id: int, message_id: int
+) -> Message | None:
+    """Получить конкретное сообщение комнаты."""
+    result = await db.execute(
+        select(Message)
+        .options(
+            selectinload(Message.sender),
+            selectinload(Message.reply_to).selectinload(Message.sender),
+        )
+        .where(
+            Message.id == message_id,
+            Message.room_id == room_id,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def mark_read(

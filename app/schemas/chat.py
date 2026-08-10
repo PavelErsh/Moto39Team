@@ -20,6 +20,7 @@ class MessageRead(BaseModel):
     sender_username: str | None = None
     sender_avatar_url: str | None = None
     sender_sponsor_badge: str | None = None
+    reply_to: "ReplyMessageRead | None" = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +30,20 @@ class MessageCreate(BaseModel):
     content: str | None = None
     message_type: str = "text"  # "text" | "image"
     image_url: str | None = None
+    reply_to_message_id: int | None = None
+
+
+class ReplyMessageRead(BaseModel):
+    """Краткое представление сообщения, на которое дан ответ."""
+    id: int
+    sender_id: int | None
+    sender_username: str | None = None
+    content: str | None
+    message_type: str
+    image_url: str | None
+    is_deleted: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Комната ────────────────────────────────────────────────────
@@ -52,6 +67,7 @@ class ChatRoomRead(BaseModel):
     unread_count: int = 0
     member_count: int = 0
     dm_partner_name: str | None = None
+    notifications_enabled: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,6 +107,7 @@ class WsIncoming(BaseModel):
     message_type: str | None = None  # "text" | "image"
     image_url: str | None = None
     message_id: int | None = None  # для type="read"
+    reply_to_message_id: int | None = None
 
 
 class WsOutgoing(BaseModel):
@@ -109,3 +126,8 @@ class UnreadCounts(BaseModel):
     """Счётчики непрочитанных сообщений."""
     total: int = 0
     rooms: dict[int, int] = Field(default_factory=dict)
+
+
+class ChatRoomNotificationsUpdate(BaseModel):
+    """Настройка уведомлений для конкретной комнаты пользователя."""
+    notifications_enabled: bool
