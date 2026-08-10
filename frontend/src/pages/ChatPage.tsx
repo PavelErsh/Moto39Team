@@ -91,6 +91,7 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
   const conversationHeadRef = useRef<HTMLElement>(null)
+  const lastMessagesScrollTopRef = useRef(0)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -267,9 +268,14 @@ export default function ChatPage() {
     if (!container) return
 
     const updateScrolledState = () => {
-      setIsMessagesScrolled(container.scrollTop > 24)
+      const currentScrollTop = container.scrollTop
+      const isScrollingUp = currentScrollTop < lastMessagesScrollTopRef.current
+
+      setIsMessagesScrolled(isScrollingUp && currentScrollTop > 24)
+      lastMessagesScrollTopRef.current = currentScrollTop
     }
 
+    lastMessagesScrollTopRef.current = container.scrollTop
     updateScrolledState()
     container.addEventListener('scroll', updateScrolledState, { passive: true })
 
