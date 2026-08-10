@@ -194,6 +194,16 @@ img.emoji {
   padding: clamp(24px, 5vw, 56px) 0;
 }
 
+.main--chat {
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.container--chat {
+  height: 100%;
+}
+
 /* ================= HEADER ================= */
 
 .site-header {
@@ -3376,16 +3386,11 @@ html.low-end .nav-user:hover {
   width: 100%;
   max-width: 780px;
   margin: 0 auto;
+  min-width: 0;
+  min-height: 0;
   /* Занимаем всю доступную высоту внутри main, чтобы
      conversation мог растянуться на flex:1 */
   height: 100%;
-}
-
-/* Когда на странице чата — убираем лишние отступы у main,
-   чтобы поле ввода было ближе к клавиатуре на мобильных */
-body:has(.chat-page) .main {
-  padding-top: 0;
-  padding-bottom: 0;
 }
 
 .chat-page__head {
@@ -3540,6 +3545,8 @@ body:has(.chat-page) .main {
   flex-direction: column;
   width: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   /* fallback для браузеров без поддержки dvh */
   height: calc(100vh - 60px);
   /* Используем dvh чтобы клавиатура не перекрывала поле ввода;
@@ -3589,7 +3596,10 @@ body:has(.chat-page) .main {
 
 .chat-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 8px 0;
   display: flex;
   flex-direction: column;
@@ -3598,6 +3608,7 @@ body:has(.chat-page) .main {
 
 .chat-msg {
   padding: 2px 0;
+  min-width: 0;
 }
 
 .chat-msg.has-header {
@@ -3638,6 +3649,7 @@ body:has(.chat-page) .main {
   gap: 8px;
   padding: 0 4px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .chat-msg__sender {
@@ -3647,6 +3659,7 @@ body:has(.chat-page) .main {
   letter-spacing: 0.03em;
   color: var(--accent);
   line-height: 1;
+  min-width: 0;
 }
 
 .chat-msg__time {
@@ -3662,6 +3675,7 @@ body:has(.chat-page) .main {
   padding: 10px 14px;
   display: inline-block;
   max-width: 90%;
+  min-width: 0;
   word-wrap: break-word;
   overflow-wrap: anywhere;
 }
@@ -3748,6 +3762,57 @@ body:has(.chat-page) .main {
     order: 3;
     padding-left: 50px;
     font-size: 11px;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    min-height: 100svh;
+    min-height: 100dvh;
+  }
+
+  .main--chat {
+    height: calc(100svh - 72px - max(env(safe-area-inset-top, 0px), 12px));
+    height: calc(100dvh - 72px - max(env(safe-area-inset-top, 0px), 12px));
+  }
+
+  .container--chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .chat-page {
+    max-width: none;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .chat-conversation {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .chat-conversation__head {
+    padding-top: 8px;
+  }
+
+  .chat-messages {
+    padding-right: 2px;
+  }
+
+  .chat-input {
+    position: sticky;
+    bottom: 0;
+    background: #050705;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-input__textarea {
+    font-size: 16px;
   }
 }
 

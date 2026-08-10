@@ -16,6 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   // На странице чата скрываем футер с пользовательским соглашением —
   // он мешает при наборе текста на мобильных устройствах.
   const hideFooter = location.pathname.startsWith('/chat')
+  const isChatPage = location.pathname.startsWith('/chat')
 
   return (
     <div className={`app-shell${hideHeader ? ' app-shell--no-header' : ''}`}>
@@ -79,8 +80,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       </header>
       )}
 
-      <main className="main">
-        <div className="container">{children}</div>
+      <main className={`main${isChatPage ? ' main--chat' : ''}`}>
+        <div className={`container${isChatPage ? ' container--chat' : ''}`}>{children}</div>
       </main>
 
       {!hideHeader && !hideFooter && (
