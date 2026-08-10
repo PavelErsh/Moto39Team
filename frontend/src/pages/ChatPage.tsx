@@ -132,14 +132,15 @@ export default function ChatPage() {
 
         if (data.type === 'message') {
           const msg = data.message as MessageItem
+          const isOwnMessage = msg.sender_id === user?.id
           setMessages((prev) => {
             // Replace optimistic message (negative id) with real one
             const filtered = prev.filter((m) => m.id >= 0 || m.content !== msg.content)
             if (filtered.some((m) => m.id === msg.id)) return prev
             return [...filtered, msg]
           })
-          // Если сообщение не в активной комнате — увеличить unread + уведомление
-          if (msg.room_id !== activeRoomIdRef.current) {
+          // Если это входящее сообщение не в активной комнате — увеличить unread + уведомление
+          if (!isOwnMessage && msg.room_id !== activeRoomIdRef.current) {
             setUnread((prev) => ({
               ...prev,
               [msg.room_id]: (prev[msg.room_id] || 0) + 1,
@@ -168,7 +169,7 @@ export default function ChatPage() {
       reconnectTimer.current = setTimeout(connectWs, 3000)
     }
     ws.onerror = () => ws.close()
-  }, [])  // не зависит от activeRoomId — используем ref
+  }, [user?.id])  // activeRoomId берём из ref, user нужен для фильтрации своих сообщений
 
   useEffect(() => {
     connectWs()

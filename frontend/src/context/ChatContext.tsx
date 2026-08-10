@@ -19,6 +19,7 @@ import {
 } from 'react'
 import { tokenStorage } from '../api/client'
 import { apiGetUnread, apiListRooms, type ChatRoomItem, type MessageItem, type UnreadCounts } from '../api/chat'
+import { useAuth } from './AuthContext'
 import { notify } from '../utils/notifications'
 
 // ── Типы ────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${win
 // ── Провайдер ───────────────────────────────────────────────────
 
 export function ChatProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const wsRetryCount = useRef(0)
@@ -109,6 +111,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const msg = data.message as MessageItem
           const rid = msg.room_id
           const sender = msg.sender_username || 'Кто-то'
+          const isOwnMessage = msg.sender_id === user?.id
 
           // Обновить последнее сообщение у комнаты в списке
           setRooms((prev) =>
@@ -117,8 +120,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             ),
           )
 
-          // Если не в активной комнате — увеличить unread + уведомление
-          if (rid !== activeRoomIdRef.current) {
+          // Если это входящее сообщение и мы не в активной комнате — увеличить unread + уведомление
+          if (!isOwnMessage && rid !== activeRoomIdRef.current) {
             setUnread((prev) => {
               const roomUnread = (prev.rooms[rid] || 0) + 1
               const total = prev.total + 1
@@ -155,7 +158,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     ws.onerror = () => {
       ws.close()
     }
-  }, [])
+  }, [user?.id])
 
   // ── REST: загрузка данных ───────────────────────────────────
 

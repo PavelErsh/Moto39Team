@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { tokenStorage } from '../api/client'
 import { apiGetMessages, apiListRooms, apiMarkRead } from '../api/chat'
 import type { ChatRoomItem, MessageItem, UnreadCounts } from '../api/chat'
+import { useAuth } from '../context/AuthContext'
 import { notify } from '../utils/notifications'
 
 // WebSocket URL — относительный путь (проксируется через nginx/vite)
@@ -17,6 +18,7 @@ export interface ChatState {
 }
 
 export function useChat() {
+  const { user } = useAuth()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -88,6 +90,7 @@ export function useChat() {
           case 'message': {
             const msg = data.message as MessageItem
             const rid = data.room_id as number
+            const isOwnMessage = msg.sender_id === user?.id
             setMessages((prev) => {
               const existing = prev[rid] || []
               // Не добавляем дубликаты
@@ -100,8 +103,8 @@ export function useChat() {
                 r.id === rid ? { ...r, last_message: msg } : r,
               ),
             )
-            // Увеличить unread если не активная комната
-            if (rid !== activeRoomId) {
+            // Увеличить unread только для входящих сообщений не в активной комнате
+            if (!isOwnMessage && rid !== activeRoomId) {
               setUnread((prev) => ({
                 total: prev.total + 1,
                 rooms: {
@@ -143,7 +146,7 @@ export function useChat() {
     ws.onerror = () => {
       ws.close()
     }
-  }, [activeRoomId])
+  }, [activeRoomId, user?.id])
 
   // Подключение/отключение WebSocket
   useEffect(() => {

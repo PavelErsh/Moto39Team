@@ -254,7 +254,10 @@ async def get_unread_counts(
     )
     counts: dict[int, int] = {}
     for room_id, last_read in member_rows.all():
-        stmt = select(func.count(Message.id)).where(Message.room_id == room_id)
+        stmt = select(func.count(Message.id)).where(
+            Message.room_id == room_id,
+            Message.sender_id != user_id,
+        )
         if last_read is not None:
             stmt = stmt.where(Message.id > last_read)
         total = await db.execute(stmt)
