@@ -3756,7 +3756,8 @@ html.low-end .nav-user:hover {
 
 .chat-conversation__header-toggle-wrap {
   display: flex;
-  justify-content: flex-end;
+  width: fit-content;
+  margin-left: auto;
   padding: 8px 0 6px;
   flex-shrink: 0;
 }

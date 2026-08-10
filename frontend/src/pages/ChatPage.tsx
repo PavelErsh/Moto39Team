@@ -92,6 +92,7 @@ export default function ChatPage() {
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
   const conversationHeadRef = useRef<HTMLElement>(null)
   const lastMessagesScrollTopRef = useRef(0)
+  const isAutoScrollingToHeaderRef = useRef(false)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -269,9 +270,23 @@ export default function ChatPage() {
 
     const updateScrolledState = () => {
       const currentScrollTop = container.scrollTop
+      const distanceToBottom =
+        container.scrollHeight - container.clientHeight - currentScrollTop
+      const isNearBottom = distanceToBottom <= 24
+
+      if (isAutoScrollingToHeaderRef.current) {
+        setIsMessagesScrolled(false)
+        lastMessagesScrollTopRef.current = currentScrollTop
+
+        if (currentScrollTop <= 24) {
+          isAutoScrollingToHeaderRef.current = false
+        }
+        return
+      }
+
       const isScrollingUp = currentScrollTop < lastMessagesScrollTopRef.current
 
-      setIsMessagesScrolled(isScrollingUp && currentScrollTop > 24)
+      setIsMessagesScrolled(isScrollingUp && currentScrollTop > 24 && !isNearBottom)
       lastMessagesScrollTopRef.current = currentScrollTop
     }
 
@@ -285,10 +300,15 @@ export default function ChatPage() {
   }, [view, activeRoomId, messages.length])
 
   const scrollToConversationHeader = useCallback(() => {
+    isAutoScrollingToHeaderRef.current = true
+    setIsMessagesScrolled(false)
     conversationHeadRef.current?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     })
+    window.setTimeout(() => {
+      isAutoScrollingToHeaderRef.current = false
+    }, 1000)
   }, [])
 
   // ── Отправка сообщения ────────────────────────────────────────
