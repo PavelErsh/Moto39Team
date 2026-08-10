@@ -237,6 +237,7 @@ img.emoji {
 .header-inner {
   display: flex;
   align-items: center;
+  margin-top: 8px;
   justify-content: space-between;
   height: 72px;
   gap: 16px;
