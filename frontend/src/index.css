@@ -53,6 +53,8 @@
     'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --font-mono: 'JetBrains Mono', 'Consolas', 'Menlo', monospace,
     'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+  --chat-keyboard-offset: 0px;
 }
 
 *,
@@ -3548,10 +3550,10 @@ html.low-end .nav-user:hover {
   min-height: 0;
   overflow: hidden;
   /* fallback для браузеров без поддержки dvh */
-  height: calc(100vh - 60px);
+  height: calc(100vh - 60px - var(--chat-keyboard-offset));
   /* Используем dvh чтобы клавиатура не перекрывала поле ввода;
      60px — высота site-header, остальное пространство отдаём чату */
-  height: calc(100dvh - 60px);
+  height: calc(100dvh - 60px - var(--chat-keyboard-offset));
   min-height: 400px;
 }
 
@@ -3706,6 +3708,7 @@ html.low-end .nav-user:hover {
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  background: #050705;
 }
 
 .chat-input__textarea {
@@ -3772,8 +3775,8 @@ html.low-end .nav-user:hover {
   }
 
   .main--chat {
-    height: calc(100svh - 72px - max(env(safe-area-inset-top, 0px), 12px));
-    height: calc(100dvh - 72px - max(env(safe-area-inset-top, 0px), 12px));
+    height: calc(100svh - 72px - max(env(safe-area-inset-top, 0px), 12px) - var(--chat-keyboard-offset));
+    height: calc(100dvh - 72px - max(env(safe-area-inset-top, 0px), 12px) - var(--chat-keyboard-offset));
   }
 
   .container--chat {
@@ -3806,7 +3809,7 @@ html.low-end .nav-user:hover {
 
   .chat-input {
     position: sticky;
-    bottom: 0;
+    bottom: var(--chat-keyboard-offset);
     background: #050705;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }

@@ -259,6 +259,34 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return
+
+    const root = document.documentElement
+    const viewport = window.visualViewport
+
+    const updateKeyboardOffset = () => {
+      const keyboardOffset = Math.max(
+        0,
+        window.innerHeight - viewport.height - viewport.offsetTop,
+      )
+
+      root.style.setProperty('--chat-keyboard-offset', `${keyboardOffset}px`)
+    }
+
+    updateKeyboardOffset()
+    viewport.addEventListener('resize', updateKeyboardOffset)
+    viewport.addEventListener('scroll', updateKeyboardOffset)
+    window.addEventListener('orientationchange', updateKeyboardOffset)
+
+    return () => {
+      viewport.removeEventListener('resize', updateKeyboardOffset)
+      viewport.removeEventListener('scroll', updateKeyboardOffset)
+      window.removeEventListener('orientationchange', updateKeyboardOffset)
+      root.style.removeProperty('--chat-keyboard-offset')
+    }
+  }, [])
+
   // ── Отправка сообщения ────────────────────────────────────────
 
   const sendMessage = useCallback((e?: FormEvent) => {
