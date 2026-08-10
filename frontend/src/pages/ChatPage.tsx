@@ -704,41 +704,43 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {isMessagesScrolled && (
-            <div className="chat-conversation__header-toggle-wrap">
-              <button
-                type="button"
-                className="chat-conversation__header-toggle"
-                onClick={scrollToConversationHeader}
-                aria-label="Показать шапку чата"
-                title="Показать шапку чата"
-              >
-                ↑
-              </button>
-            </div>
-          )}
+          <div className="chat-composer-layer">
+            {isMessagesScrolled && (
+              <div className="chat-conversation__header-toggle-wrap">
+                <button
+                  type="button"
+                  className="chat-conversation__header-toggle"
+                  onClick={scrollToConversationHeader}
+                  aria-label="Показать шапку чата"
+                  title="Показать шапку чата"
+                >
+                  ↑
+                </button>
+              </div>
+            )}
 
-          <form className="chat-input" onSubmit={sendMessage}>
-            <textarea
-              ref={draftInputRef}
-              className="chat-input__textarea"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Сообщение…"
-              rows={1}
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="btn btn-primary chat-input__send"
-              onMouseDown={(e) => e.preventDefault()}
-              onTouchStart={(e) => e.preventDefault()}
-              disabled={!draft.trim()}
-            >
-              →
-            </button>
-          </form>
+            <form className="chat-input" onSubmit={sendMessage}>
+              <textarea
+                ref={draftInputRef}
+                className="chat-input__textarea"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder="Сообщение…"
+                rows={1}
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="btn btn-primary chat-input__send"
+                onMouseDown={(e) => e.preventDefault()}
+                onTouchStart={(e) => e.preventDefault()}
+                disabled={!draft.trim()}
+              >
+                →
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
