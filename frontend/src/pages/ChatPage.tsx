@@ -560,7 +560,11 @@ export default function ChatPage() {
       {view === 'chat' && activeRoomId && (
         <div className="chat-conversation">
           <header className="chat-conversation__head" ref={conversationHeadRef}>
-            <button type="button" className="btn-ghost" onClick={backToList}>
+            <button
+              type="button"
+              className="btn btn-ghost chat-conversation__back-btn"
+              onClick={backToList}
+            >
               ← Чаты
             </button>
             <h2 className="chat-conversation__title">
