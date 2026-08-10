@@ -56,6 +56,7 @@ export default function ChatPage() {
   const isAdmin = user?.is_superuser ?? false
   const [view, setView] = useState<View>('list')
   const [searchParams] = useSearchParams()
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
 
   // Комнаты
   const [rooms, setRooms] = useState<ChatRoomItem[]>([])
@@ -89,6 +90,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
+  const conversationHeadRef = useRef<HTMLElement>(null)
 
   // ── WebSocket подключение ─────────────────────────────────────
 
@@ -273,6 +275,7 @@ export default function ChatPage() {
       )
 
       root.style.setProperty('--chat-keyboard-offset', `${keyboardOffset}px`)
+      setIsKeyboardOpen(keyboardOffset > 120)
     }
 
     updateKeyboardOffset()
@@ -285,7 +288,15 @@ export default function ChatPage() {
       viewport.removeEventListener('scroll', updateKeyboardOffset)
       window.removeEventListener('orientationchange', updateKeyboardOffset)
       root.style.removeProperty('--chat-keyboard-offset')
+      setIsKeyboardOpen(false)
     }
+  }, [])
+
+  const scrollToConversationHeader = useCallback(() => {
+    conversationHeadRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
   }, [])
 
   // ── Отправка сообщения ────────────────────────────────────────
@@ -548,7 +559,7 @@ export default function ChatPage() {
       {/* ── Чат (активная комната) ─────────────────────────── */}
       {view === 'chat' && activeRoomId && (
         <div className="chat-conversation">
-          <header className="chat-conversation__head">
+          <header className="chat-conversation__head" ref={conversationHeadRef}>
             <button type="button" className="btn-ghost" onClick={backToList}>
               ← Чаты
             </button>
@@ -633,6 +644,18 @@ export default function ChatPage() {
               →
             </button>
           </form>
+
+          {isKeyboardOpen && (
+            <button
+              type="button"
+              className="chat-conversation__header-toggle"
+              onClick={scrollToConversationHeader}
+              aria-label="Показать шапку чата"
+              title="Показать шапку чата"
+            >
+              ↑
+            </button>
+          )}
         </div>
       )}
 
