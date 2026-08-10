@@ -471,7 +471,6 @@ async def chat_websocket(websocket: WebSocket):
                 if room:
                     from app.crud.push import get_subscriptions_for_user
                     from app.services.push import PushPayload, push_service
-                    from app.services.ws_manager import is_user_online
 
                     for member in room.members:
                         if member.user_id != user_id:
@@ -487,31 +486,34 @@ async def chat_websocket(websocket: WebSocket):
                                 },
                             )
 
-                            # Push-уведомление (если офлайн или в фоне)
-                            if not await is_user_online(member.user_id):
-                                try:
-                                    subs = await get_subscriptions_for_user(
-                                        session, member.user_id
+                            # Push-уведомление отправляем всем подписанным устройствам.
+                            # Причина: наличие активного WebSocket ещё не означает,
+                            # что пользователь смотрит на экран. На заблокированном
+                            # телефоне / в фоне JS может быть уснувшим, а системный
+                            # push всё равно нужен.
+                            try:
+                                subs = await get_subscriptions_for_user(
+                                    session, member.user_id
+                                )
+                                for sub in subs:
+                                    await push_service.send(
+                                        endpoint=sub.endpoint,
+                                        p256dh=sub.p256dh,
+                                        auth=sub.auth,
+                                        payload=PushPayload(
+                                            title=f"💬 {user.username}",
+                                            body=(msg.content or "")[:120],
+                                            tag=f"chat-room-{msg.room_id}",
+                                            url=f"/chat?room={msg.room_id}",
+                                            data={
+                                                "type": "new_message",
+                                                "room_id": msg.room_id,
+                                                "sender_id": user_id,
+                                            },
+                                        ),
                                     )
-                                    for sub in subs:
-                                        await push_service.send(
-                                            endpoint=sub.endpoint,
-                                            p256dh=sub.p256dh,
-                                            auth=sub.auth,
-                                            payload=PushPayload(
-                                                title=f"💬 {user.username}",
-                                                body=(msg.content or "")[:120],
-                                                tag=f"chat-room-{msg.room_id}",
-                                                url=f"/chat?room={msg.room_id}",
-                                                data={
-                                                    "type": "new_message",
-                                                    "room_id": msg.room_id,
-                                                    "sender_id": user_id,
-                                                },
-                                            ),
-                                        )
-                                except Exception:
-                                    pass  # не блокируем отправку сообщения из-за ошибки push
+                            except Exception:
+                                pass  # не блокируем отправку сообщения из-за ошибки push
 
             elif msg.type == "typing":
                 if msg.room_id:

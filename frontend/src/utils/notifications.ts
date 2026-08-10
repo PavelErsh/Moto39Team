@@ -40,7 +40,7 @@ async function initCapacitor() {
 function requestWebPermission(): void {
   if (typeof window === 'undefined') return
   if (!('Notification' in window)) return
-  if (Notification.permission === 'granted' || Notification.permission === 'denied') return
+  if (Notification.permission === 'granted') return
   Notification.requestPermission().catch(() => { /* noop */ })
 }
 

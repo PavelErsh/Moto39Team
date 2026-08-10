@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
+import InstallPwaHint from './components/InstallPwaHint'
+import NotificationPermissionNotice from './components/NotificationPermissionNotice'
 import ProtectedRoute from './components/ProtectedRoute'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
@@ -10,6 +12,7 @@ import { useAuth } from './context/AuthContext'
 import { useTwemoji } from './hooks/useTwemoji'
 import { usePushSubscription } from './hooks/usePush'
 import { requestNotificationPermissions } from './utils/notifications'
+import { ensurePushServiceWorker } from './utils/pushRegistration'
 
 /**
  * Code-splitting крупных / редко используемых страниц.
@@ -49,6 +52,7 @@ export default function App() {
 
   // Запрашиваем разрешение на уведомления при первом входе
   useEffect(() => {
+    ensurePushServiceWorker().catch(() => {})
     requestNotificationPermissions()
   }, [])
 
@@ -62,6 +66,8 @@ export default function App() {
 
   return (
     <Layout>
+      <NotificationPermissionNotice />
+      <InstallPwaHint />
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<HomePage />} />

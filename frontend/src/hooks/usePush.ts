@@ -10,6 +10,7 @@
 import { useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api/client'
+import { ensurePushServiceWorker } from '../utils/pushRegistration'
 
 const VAPID_PUBLIC_KEY_STORAGE = 'moto39_vapid_key'
 
@@ -47,6 +48,11 @@ async function subscribeUser(_userId: number): Promise<void> {
     return
   }
 
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+    console.warn('[Push] Разрешение на уведомления запрещено пользователем')
+    return
+  }
+
   const vapidKey = await getVapidPublicKey()
   if (!vapidKey) {
     console.warn('[Push] VAPID public key не найден')
@@ -54,7 +60,20 @@ async function subscribeUser(_userId: number): Promise<void> {
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await ensurePushServiceWorker()
+    if (!registration) {
+      console.warn('[Push] Service worker не зарегистрирован')
+      return
+    }
+
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        console.warn('[Push] Пользователь не выдал разрешение на уведомления')
+        return
+      }
+    }
+
     let subscription = await registration.pushManager.getSubscription()
 
     if (subscription) {
@@ -64,7 +83,18 @@ async function subscribeUser(_userId: number): Promise<void> {
         const currentKeyStr = btoa(String.fromCharCode(...new Uint8Array(currentKey)))
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
         if (currentKeyStr === vapidKey) {
-          console.log('[Push] Уже подписан с тем же ключом')
+          const rawKey = subscription.getKey('p256dh')
+          const rawAuth = subscription.getKey('auth')
+          if (!rawKey || !rawAuth) return
+          await api.post('/push/subscribe', {
+            endpoint: subscription.endpoint,
+            p256dh: btoa(String.fromCharCode(...new Uint8Array(rawKey)))
+              .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            auth: btoa(String.fromCharCode(...new Uint8Array(rawAuth)))
+              .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            user_agent: navigator.userAgent.slice(0, 500),
+          })
+          console.log('[Push] Подписка уже существовала и была синхронизирована с сервером')
           return
         }
       }
@@ -97,7 +127,8 @@ async function subscribeUser(_userId: number): Promise<void> {
 async function unsubscribeUser(): Promise<void> {
   if (!('serviceWorker' in navigator)) return
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await ensurePushServiceWorker()
+    if (!registration) return
     const subscription = await registration.pushManager.getSubscription()
     if (subscription) {
       await api.post('/push/unsubscribe', {

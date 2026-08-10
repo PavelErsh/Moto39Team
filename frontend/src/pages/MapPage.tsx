@@ -15,7 +15,6 @@ import {
   type LocationFix,
 } from '../services/backgroundLocation'
 
-import InstallPwaHint from '../components/InstallPwaHint'
 import { useAuth } from '../context/AuthContext'
 
 
@@ -1041,7 +1040,6 @@ export default function MapPage() {
 
   return (
     <div className="map-page">
-      <InstallPwaHint />
       <div className="map-page__head">
         <div>
           <h1 className="map-page__title">Мотокарта</h1>
