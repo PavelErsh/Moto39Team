@@ -883,8 +883,8 @@ export default function ChatPage() {
                   {sortedRoomMembers.length === 0 ? (
                     <div className="muted">Участников пока нет.</div>
                   ) : (
-                    <div className="events-table-wrap">
-                      <table className="events-table">
+                    <div className="events-table-wrap chat-members-panel__table-wrap">
+                      <table className="events-table chat-members-panel__table">
                         <thead>
                           <tr>
                             <th>Пользователь</th>
@@ -932,8 +932,8 @@ export default function ChatPage() {
                   {availableUsersForActiveRoom.length === 0 ? (
                     <div className="muted">Все пользователи уже состоят в этом чате.</div>
                   ) : (
-                    <div className="events-table-wrap">
-                      <table className="events-table">
+                    <div className="events-table-wrap chat-members-panel__table-wrap">
+                      <table className="events-table chat-members-panel__table">
                         <thead>
                           <tr>
                             <th>Пользователь</th>

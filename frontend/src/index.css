@@ -1780,6 +1780,48 @@ body:has(.home--guest) .site-footer::before {
   color: var(--accent);
 }
 
+.chat-members-panel__table {
+  min-width: 0;
+}
+
+.chat-members-panel__table-wrap {
+  overflow-x: visible;
+}
+
+.chat-members-panel__table th,
+.chat-members-panel__table td {
+  word-break: break-word;
+}
+
+@media (max-width: 560px) {
+  .chat-members-panel {
+    padding: 16px;
+  }
+
+  .chat-members-panel .grid-2 {
+    gap: 14px;
+  }
+
+  .chat-members-panel__table {
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  .chat-members-panel__table thead th,
+  .chat-members-panel__table tbody td {
+    padding: 10px 12px;
+  }
+
+  .chat-members-panel__table .events-table__actions {
+    white-space: normal;
+    justify-content: flex-start;
+  }
+
+  .chat-members-panel__table .btn {
+    width: 100%;
+  }
+}
+
 .events-table tbody tr:last-child td {
   border-bottom: none;
 }
