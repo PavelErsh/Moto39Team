@@ -27,11 +27,16 @@ import {
   type RidePayload,
 } from '../api/rides'
 import {
+  apiAdminAddBikeChatUser,
   apiAdminListUsers,
+  apiAdminListBikeChatAvailableUsers,
+  apiAdminListBikeChatUsers,
+  apiAdminRemoveBikeChatUser,
   apiAdminSetActive,
   apiAdminSetSponsorBadge,
   apiAdminSetSuperuser,
 } from '../api/admin'
+import type { ChatMemberItem } from '../api/chat'
 import {
   apiCreateReference,
   apiDeleteReference,
@@ -85,6 +90,10 @@ export default function AdminPage() {
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
   const [usersView, setUsersView] = useState<'active' | 'blocked'>('active')
+  const [bikeChatUsers, setBikeChatUsers] = useState<ChatMemberItem[]>([])
+  const [bikeChatAvailableUsers, setBikeChatAvailableUsers] = useState<User[]>([])
+  const [bikeChatLoading, setBikeChatLoading] = useState(false)
+  const [bikeChatBusyUserId, setBikeChatBusyUserId] = useState<number | null>(null)
 
   // references
   const [refs, setRefs] = useState<ReferenceItem[]>([])
@@ -126,11 +135,33 @@ export default function AdminPage() {
     setUsersLoading(true)
     setUsersError(null)
     try {
-      setUsers(await apiAdminListUsers())
+      const [allUsers, members, available] = await Promise.all([
+        apiAdminListUsers(),
+        apiAdminListBikeChatUsers(),
+        apiAdminListBikeChatAvailableUsers(),
+      ])
+      setUsers(allUsers)
+      setBikeChatUsers(members)
+      setBikeChatAvailableUsers(available)
     } catch (err) {
       setUsersError(extractApiError(err))
     } finally {
       setUsersLoading(false)
+      setBikeChatLoading(false)
+    }
+  }, [])
+
+  const refreshBikeChatLists = useCallback(async () => {
+    setBikeChatLoading(true)
+    try {
+      const [members, available] = await Promise.all([
+        apiAdminListBikeChatUsers(),
+        apiAdminListBikeChatAvailableUsers(),
+      ])
+      setBikeChatUsers(members)
+      setBikeChatAvailableUsers(available)
+    } finally {
+      setBikeChatLoading(false)
     }
   }, [])
 
@@ -165,6 +196,32 @@ export default function AdminPage() {
     else if (tab === 'users') void loadUsers()
     else if (tab === 'references') void loadRefs()
   }, [tab, user, loadEvents, loadRides, loadUsers, loadRefs])
+
+  async function onAddToBikeChat(userId: number) {
+    setUsersError(null)
+    setBikeChatBusyUserId(userId)
+    try {
+      await apiAdminAddBikeChatUser(userId)
+      await refreshBikeChatLists()
+    } catch (err) {
+      setUsersError(extractApiError(err))
+    } finally {
+      setBikeChatBusyUserId(null)
+    }
+  }
+
+  async function onRemoveFromBikeChat(userId: number) {
+    setUsersError(null)
+    setBikeChatBusyUserId(userId)
+    try {
+      await apiAdminRemoveBikeChatUser(userId)
+      await refreshBikeChatLists()
+    } catch (err) {
+      setUsersError(extractApiError(err))
+    } finally {
+      setBikeChatBusyUserId(null)
+    }
+  }
 
   if (authLoading) return null
   if (!user) return <Navigate to="/login" replace />
@@ -1632,6 +1689,14 @@ export default function AdminPage() {
         const blockedUsers = users.filter((u) => !u.is_active)
         const shownUsers =
           usersView === 'active' ? activeUsers : blockedUsers
+        const sortedBikeChatUsers = [...bikeChatUsers].sort((a, b) => {
+          const nameA = (a.username ?? '').toLowerCase()
+          const nameB = (b.username ?? '').toLowerCase()
+          return nameA.localeCompare(nameB, 'ru')
+        })
+        const sortedAvailableBikeChatUsers = [...bikeChatAvailableUsers].sort((a, b) =>
+          (a.username ?? '').localeCompare(b.username ?? '', 'ru'),
+        )
         return (
         <div className="admin-section">
           <div className="admin-section__head">
@@ -1659,111 +1724,217 @@ export default function AdminPage() {
 
           {usersLoading ? (
             <div className="muted">Загрузка…</div>
-          ) : shownUsers.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state__icon">
-                {usersView === 'active' ? '👥' : '🚫'}
-              </div>
-              <p className="muted">
-                {usersView === 'active'
-                  ? 'Активных пользователей пока нет.'
-                  : 'Заблокированных пользователей нет.'}
-              </p>
-            </div>
           ) : (
-            <div className="events-table-wrap">
-              <table className="events-table">
-                <thead>
-                  <tr>
-                    <th>Логин</th>
-                    <th>Email</th>
-                    <th>Имя</th>
-                    <th>Значок</th>
-                    <th>Админ</th>
-                    <th>Активен</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownUsers.map((u) => (
-                    <tr key={u.id} className={u.is_active ? '' : 'is-past'}>
-                      <td>
-                        <strong>@{u.username}</strong>
-                        {u.id === user.id && (
-                          <span className="tag-me"> ты</span>
-                        )}
-                      </td>
-                      <td>{u.email}</td>
-                      <td>{u.full_name || '—'}</td>
-                      <td>
-                        {u.sponsor_badge ? (
-                          <span
-                            className="sponsor-badge"
-                            title="Значок спонсора проекта"
-                          >
-                            {u.sponsor_badge}
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        {u.is_superuser ? (
-                          <span className="badge badge-accent">админ</span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        {u.is_active ? (
-                          <span className="badge">активен</span>
-                        ) : (
-                          <span className="badge badge-danger">
-                            заблокирован
-                          </span>
-                        )}
-                      </td>
-                      <td className="events-table__actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => onToggleAdmin(u)}
-                          disabled={u.id === user.id && u.is_superuser}
-                          title={
-                            u.id === user.id && u.is_superuser
-                              ? 'Нельзя снять права с себя'
-                              : ''
-                          }
-                        >
-                          {u.is_superuser ? 'Снять админа' : 'Сделать админом'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm btn-danger"
-                          onClick={() => onToggleActive(u)}
-                          disabled={u.id === user.id && u.is_active}
-                          title={
-                            u.id === user.id && u.is_active
-                              ? 'Нельзя заблокировать себя'
-                              : ''
-                          }
-                        >
-                          {u.is_active ? 'Заблокировать' : 'Разблокировать'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => onEditSponsorBadge(u)}
-                          title="Выдать/изменить значок спонсора проекта"
-                        >
-                          {u.sponsor_badge ? '💎 Значок' : '＋ Значок'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="edit-card" style={{ marginBottom: 16 }}>
+                <h3 className="garage__form-title">🏍 БАЙКЧАТ</h3>
+                <p className="muted">
+                  Новые зарегистрированные пользователи добавляются сюда автоматически.
+                  Ниже можно посмотреть участников, добавить или удалить их вручную.
+                </p>
+
+                {bikeChatLoading ? (
+                  <div className="muted">Обновление списка чата…</div>
+                ) : (
+                  <div className="grid-2">
+                    <div>
+                      <h4 className="admin-section__title" style={{ fontSize: '1rem' }}>
+                        В чате сейчас: {sortedBikeChatUsers.length}
+                      </h4>
+                      {sortedBikeChatUsers.length === 0 ? (
+                        <div className="muted">Участников пока нет.</div>
+                      ) : (
+                        <div className="events-table-wrap">
+                          <table className="events-table">
+                            <thead>
+                              <tr>
+                                <th>Пользователь</th>
+                                <th>Роль</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortedBikeChatUsers.map((member) => (
+                                <tr key={member.id}>
+                                  <td>
+                                    <strong>@{member.username ?? `id:${member.user_id}`}</strong>
+                                  </td>
+                                  <td>
+                                    {member.role === 'admin' ? (
+                                      <span className="badge badge-accent">админ</span>
+                                    ) : (
+                                      <span className="badge">участник</span>
+                                    )}
+                                  </td>
+                                  <td className="events-table__actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm btn-danger"
+                                      onClick={() => onRemoveFromBikeChat(member.user_id)}
+                                      disabled={bikeChatBusyUserId === member.user_id}
+                                    >
+                                      Удалить
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="admin-section__title" style={{ fontSize: '1rem' }}>
+                        Добавить в чат
+                      </h4>
+                      {sortedAvailableBikeChatUsers.length === 0 ? (
+                        <div className="muted">Все пользователи уже состоят в БАЙКЧАТ.</div>
+                      ) : (
+                        <div className="events-table-wrap">
+                          <table className="events-table">
+                            <thead>
+                              <tr>
+                                <th>Пользователь</th>
+                                <th>Email</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortedAvailableBikeChatUsers.map((availableUser) => (
+                                <tr key={availableUser.id}>
+                                  <td>
+                                    <strong>@{availableUser.username}</strong>
+                                  </td>
+                                  <td>{availableUser.email}</td>
+                                  <td className="events-table__actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      onClick={() => onAddToBikeChat(availableUser.id)}
+                                      disabled={bikeChatBusyUserId === availableUser.id}
+                                    >
+                                      Добавить
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {shownUsers.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state__icon">
+                    {usersView === 'active' ? '👥' : '🚫'}
+                  </div>
+                  <p className="muted">
+                    {usersView === 'active'
+                      ? 'Активных пользователей пока нет.'
+                      : 'Заблокированных пользователей нет.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="events-table-wrap">
+                  <table className="events-table">
+                    <thead>
+                      <tr>
+                        <th>Логин</th>
+                        <th>Email</th>
+                        <th>Имя</th>
+                        <th>Значок</th>
+                        <th>Админ</th>
+                        <th>Активен</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownUsers.map((u) => (
+                        <tr key={u.id} className={u.is_active ? '' : 'is-past'}>
+                          <td>
+                            <strong>@{u.username}</strong>
+                            {u.id === user.id && (
+                              <span className="tag-me"> ты</span>
+                            )}
+                          </td>
+                          <td>{u.email}</td>
+                          <td>{u.full_name || '—'}</td>
+                          <td>
+                            {u.sponsor_badge ? (
+                              <span
+                                className="sponsor-badge"
+                                title="Значок спонсора проекта"
+                              >
+                                {u.sponsor_badge}
+                              </span>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td>
+                            {u.is_superuser ? (
+                              <span className="badge badge-accent">админ</span>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td>
+                            {u.is_active ? (
+                              <span className="badge">активен</span>
+                            ) : (
+                              <span className="badge badge-danger">
+                                заблокирован
+                              </span>
+                            )}
+                          </td>
+                          <td className="events-table__actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => onToggleAdmin(u)}
+                              disabled={u.id === user.id && u.is_superuser}
+                              title={
+                                u.id === user.id && u.is_superuser
+                                  ? 'Нельзя снять права с себя'
+                                  : ''
+                              }
+                            >
+                              {u.is_superuser ? 'Снять админа' : 'Сделать админом'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm btn-danger"
+                              onClick={() => onToggleActive(u)}
+                              disabled={u.id === user.id && u.is_active}
+                              title={
+                                u.id === user.id && u.is_active
+                                  ? 'Нельзя заблокировать себя'
+                                  : ''
+                              }
+                            >
+                              {u.is_active ? 'Заблокировать' : 'Разблокировать'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => onEditSponsorBadge(u)}
+                              title="Выдать/изменить значок спонсора проекта"
+                            >
+                              {u.sponsor_badge ? '💎 Значок' : '＋ Значок'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
         )
