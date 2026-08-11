@@ -10,6 +10,9 @@ from app.models.user import User
 from app.schemas.chat import ChatRoomCreate, MessageCreate
 
 
+DEFAULT_BIKE_CHAT_NAME = "БАЙКЧАТ"
+
+
 # ── Комнаты ─────────────────────────────────────────────────────
 
 async def create_room(
@@ -64,6 +67,62 @@ async def get_room(db: AsyncSession, room_id: int) -> ChatRoom | None:
         .where(ChatRoom.id == room_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_room_by_name(db: AsyncSession, name: str) -> ChatRoom | None:
+    """Найти комнату по имени."""
+    result = await db.execute(
+        select(ChatRoom)
+        .execution_options(populate_existing=True)
+        .options(selectinload(ChatRoom.members).selectinload(ChatMember.user))
+        .where(ChatRoom.name == name)
+        .order_by(ChatRoom.id.asc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def ensure_default_bike_chat(
+    db: AsyncSession,
+    *,
+    created_by: int | None = None,
+) -> ChatRoom:
+    """Вернуть комнату `БАЙКЧАТ`, создавая её при необходимости."""
+    room = await get_room_by_name(db, DEFAULT_BIKE_CHAT_NAME)
+    if room is not None:
+        return room
+
+    room = ChatRoom(
+        name=DEFAULT_BIKE_CHAT_NAME,
+        room_type="group",
+        created_by=created_by,
+    )
+    db.add(room)
+    await db.flush()
+
+    if created_by is not None:
+        db.add(ChatMember(room_id=room.id, user_id=created_by, role="admin"))
+
+    await db.commit()
+    refreshed = await get_room(db, room.id)
+    assert refreshed is not None
+    return refreshed
+
+
+async def ensure_user_in_default_bike_chat(
+    db: AsyncSession,
+    user_id: int,
+    *,
+    room_created_by: int | None = None,
+) -> ChatRoom:
+    """Гарантировать, что пользователь состоит в `БАЙКЧАТ`."""
+    room = await ensure_default_bike_chat(db, created_by=room_created_by)
+    if not await is_member(db, room.id, user_id):
+        await add_members(db, room.id, [user_id])
+        refreshed = await get_room(db, room.id)
+        assert refreshed is not None
+        return refreshed
+    return room
 
 
 async def get_user_rooms(

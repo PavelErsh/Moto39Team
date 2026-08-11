@@ -17,6 +17,7 @@ from app.core.security import (
     decode_token,
     hash_password,
 )
+from app.crud import chat as chat_crud
 from app.crud.email_verification import email_verification_crud
 from app.crud.user import user_crud
 from app.schemas.token import RefreshTokenRequest, Token
@@ -124,10 +125,11 @@ async def register(
     # 3. Если верификация email выключена — создаём пользователя сразу.
     if not settings.EMAIL_VERIFICATION_ENABLED:
         try:
-            await user_crud.create(
+            user = await user_crud.create(
                 db,
                 data.model_copy(update={"email": email, "username": username}),
             )
+            await chat_crud.ensure_user_in_default_bike_chat(db, user.id)
         except IntegrityError:
             # Кто-то успел зарегистрироваться с этими же данными
             # между нашими проверками и insert'ом.
@@ -283,6 +285,7 @@ async def verify_email(
             full_name=draft.full_name,
             hashed_password=draft.hashed_password,
         )
+        await chat_crud.ensure_user_in_default_bike_chat(db, user.id)
     except IntegrityError:
         await db.rollback()
         await email_verification_crud.delete_by_email(db, email)

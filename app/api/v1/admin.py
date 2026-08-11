@@ -3,7 +3,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentSuperuser, DbSession
+from app.crud import chat as chat_crud
 from app.crud.user import user_crud
+from app.schemas.chat import ChatMemberRead
 from app.schemas.user import UserRead
 
 router = APIRouter()
@@ -21,6 +23,18 @@ class SponsorBadgePayload(BaseModel):
     # Пустая строка (или None) — сброс значка. Ограничение в 16 символов
     # позволяет вместить составные эмодзи с ZWJ/скин-тонами.
     sponsor_badge: str | None = Field(default=None, max_length=16)
+
+
+def _member_to_read(member) -> ChatMemberRead:
+    return ChatMemberRead(
+        id=member.id,
+        user_id=member.user_id,
+        role=member.role,
+        joined_at=member.joined_at,
+        username=member.user.username if member.user else None,
+        avatar_url=member.user.avatar_url if member.user else None,
+        sponsor_badge=member.user.sponsor_badge if member.user else None,
+    )
 
 
 @router.get(
@@ -118,3 +132,89 @@ async def set_sponsor_badge(
     await db.commit()
     await db.refresh(user)
     return UserRead.model_validate(user)
+
+
+@router.get(
+    "/chat/bikechat/users",
+    response_model=list[ChatMemberRead],
+    summary="Участники чата БАЙКЧАТ (только админ)",
+)
+async def list_bikechat_users(
+    _: CurrentSuperuser,
+    db: DbSession,
+) -> list[ChatMemberRead]:
+    room = await chat_crud.ensure_default_bike_chat(db)
+    room = await chat_crud.get_room(db, room.id)
+    if room is None:
+        return []
+    return [_member_to_read(member) for member in room.members]
+
+
+@router.get(
+    "/chat/bikechat/available-users",
+    response_model=list[UserRead],
+    summary="Пользователи, которых можно добавить в БАЙКЧАТ (только админ)",
+)
+async def list_bikechat_available_users(
+    _: CurrentSuperuser,
+    db: DbSession,
+) -> list[UserRead]:
+    room = await chat_crud.ensure_default_bike_chat(db)
+    room = await chat_crud.get_room(db, room.id)
+    member_ids = {member.user_id for member in room.members} if room else set()
+    users = await user_crud.list_all(db)
+    return [
+        UserRead.model_validate(user)
+        for user in users
+        if user.id not in member_ids
+    ]
+
+
+@router.post(
+    "/chat/bikechat/users/{user_id}",
+    response_model=list[ChatMemberRead],
+    summary="Добавить пользователя в БАЙКЧАТ (только админ)",
+)
+async def add_user_to_bikechat(
+    user_id: int,
+    current_admin: CurrentSuperuser,
+    db: DbSession,
+) -> list[ChatMemberRead]:
+    user = await user_crud.get(db, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+    room = await chat_crud.ensure_user_in_default_bike_chat(
+        db,
+        user_id,
+        room_created_by=current_admin.id,
+    )
+    room = await chat_crud.get_room(db, room.id)
+    if room is None:
+        return []
+    return [_member_to_read(member) for member in room.members]
+
+
+@router.delete(
+    "/chat/bikechat/users/{user_id}",
+    response_model=list[ChatMemberRead],
+    summary="Удалить пользователя из БАЙКЧАТ (только админ)",
+)
+async def remove_user_from_bikechat(
+    user_id: int,
+    _: CurrentSuperuser,
+    db: DbSession,
+) -> list[ChatMemberRead]:
+    room = await chat_crud.ensure_default_bike_chat(db)
+    if not await chat_crud.is_member(db, room.id, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не состоит в БАЙКЧАТ",
+        )
+    await chat_crud.remove_members(db, room.id, [user_id])
+    room = await chat_crud.get_room(db, room.id)
+    if room is None:
+        return []
+    return [_member_to_read(member) for member in room.members]
