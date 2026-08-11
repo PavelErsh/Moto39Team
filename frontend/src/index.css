@@ -1759,6 +1759,22 @@ body:has(.home--guest) .site-footer::before {
   color: var(--text);
 }
 
+.chat-members-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.chat-members-panel__subtitle {
+  margin: 0 0 10px;
+  font-family: var(--font-head);
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
 .events-table tbody tr:last-child td {
   border-bottom: none;
 }

@@ -3,20 +3,23 @@ import type { FormEvent, KeyboardEvent, TouchEvent, UIEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
+  apiAddMembers,
   apiCreateRoom,
   apiGetMessages,
   apiGetRoom,
   apiListRooms,
   apiMarkRead,
+  apiRemoveMembers,
   apiGetUnread,
   apiUpdateRoomNotifications,
   type ChatRoomItem,
+  type ChatMemberItem,
   type ChatRoomDetail,
   type MessageItem,
   type MessageReactionItem,
   type ReplyMessageItem,
 } from '../api/chat'
-import { apiListUsers } from '../api/motorcycles'
+import { apiListUsers, type PublicUser } from '../api/motorcycles'
 import { useAuth } from '../context/AuthContext'
 import { tokenStorage } from '../api/client'
 import { linkifyText } from '../utils/linkify'
@@ -90,6 +93,9 @@ export default function ChatPage() {
   const [activeRoom, setActiveRoom] = useState<ChatRoomDetail | null>(null)
   const [messages, setMessages] = useState<MessageItem[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [memberActionError, setMemberActionError] = useState<string | null>(null)
+  const [memberActionSuccess, setMemberActionSuccess] = useState<string | null>(null)
+  const [memberActionBusyId, setMemberActionBusyId] = useState<number | null>(null)
 
   // Unread
   const [unread, setUnread] = useState<Record<number, number>>({})
@@ -102,7 +108,7 @@ export default function ChatPage() {
   let wsRetryCount = 0  // сбрасывается при успешном подключении
 
   // Создание комнаты
-  const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([])
+  const [allUsers, setAllUsers] = useState<PublicUser[]>([])
   const [newRoomName, setNewRoomName] = useState('')
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([])
   const [creating, setCreating] = useState(false)
@@ -273,6 +279,8 @@ export default function ChatPage() {
         apiGetMessages(roomId),
       ])
       setActiveRoom(room)
+      setMemberActionError(null)
+      setMemberActionSuccess(null)
       setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
       setReplyToMessage(null)
       setMessages(msgs)
@@ -564,7 +572,7 @@ export default function ChatPage() {
     setSelectedUserIds([])
     try {
       const users = await apiListUsers()
-      setAllUsers(users.map((u: any) => ({ id: u.id, username: u.username })))
+      setAllUsers(users)
     } catch { /* ignore */ }
   }, [])
 
@@ -621,6 +629,24 @@ export default function ChatPage() {
   )
 
   const activeRoomMuted = activeRoom?.notifications_enabled === false
+  const currentRoomMember = activeRoom?.members.find((member) => member.user_id === user?.id) ?? null
+  const canManageMembers = activeRoom?.room_type === 'group' && currentRoomMember?.role === 'admin'
+  const sortedRoomMembers = useMemo(
+    () => [...(activeRoom?.members ?? [])].sort((a, b) => (a.username ?? '').localeCompare(b.username ?? '', 'ru')),
+    [activeRoom],
+  )
+  const availableUsersForActiveRoom = useMemo(() => {
+    const memberIds = new Set((activeRoom?.members ?? []).map((member) => member.user_id))
+    return allUsers
+      .filter((candidate) => !memberIds.has(candidate.id))
+      .sort((a, b) => a.username.localeCompare(b.username, 'ru'))
+  }, [activeRoom, allUsers])
+
+  const refreshActiveRoom = useCallback(async (roomId: number) => {
+    const room = await apiGetRoom(roomId)
+    setActiveRoom(room)
+    setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
+  }, [])
 
   const toggleRoomNotifications = useCallback(async (roomId: number) => {
     const currentEnabled = activeRoom?.notifications_enabled ?? true
@@ -658,6 +684,43 @@ export default function ChatPage() {
       ))
     }
   }, [activeRoom])
+
+  const addMemberToActiveRoom = useCallback(async (userId: number) => {
+    if (!activeRoomId) return
+    setMemberActionError(null)
+    setMemberActionSuccess(null)
+    setMemberActionBusyId(userId)
+    try {
+      await apiAddMembers(activeRoomId, [userId])
+      await refreshActiveRoom(activeRoomId)
+      const addedUser = allUsers.find((candidate) => candidate.id === userId)
+      setMemberActionSuccess(
+        addedUser?.username ? `@${addedUser.username} добавлен(а) в чат` : 'Пользователь добавлен в чат',
+      )
+    } catch (err) {
+      setMemberActionError(extractApiError(err))
+    } finally {
+      setMemberActionBusyId(null)
+    }
+  }, [activeRoomId, allUsers, refreshActiveRoom])
+
+  const removeMemberFromActiveRoom = useCallback(async (member: ChatMemberItem) => {
+    if (!activeRoomId) return
+    setMemberActionError(null)
+    setMemberActionSuccess(null)
+    setMemberActionBusyId(member.user_id)
+    try {
+      await apiRemoveMembers(activeRoomId, [member.user_id])
+      await refreshActiveRoom(activeRoomId)
+      setMemberActionSuccess(
+        member.username ? `@${member.username} удалён(а) из чата` : 'Пользователь удалён из чата',
+      )
+    } catch (err) {
+      setMemberActionError(extractApiError(err))
+    } finally {
+      setMemberActionBusyId(null)
+    }
+  }, [activeRoomId, refreshActiveRoom])
 
   const startReply = useCallback((message: MessageItem) => {
     setReplyToMessage(message)
@@ -789,6 +852,108 @@ export default function ChatPage() {
               {activeRoomMuted ? '🔕 Выкл.' : '🔔 Вкл.'}
             </button>
           </header>
+
+          {canManageMembers && (
+            <div className="chat-members-panel edit-card">
+              <h3 className="garage__form-title">Участники чата</h3>
+              <p className="muted">
+                Здесь можно вручную добавлять пользователей в чат и удалять их при необходимости.
+              </p>
+
+              {memberActionError && <div className="alert alert-error">{memberActionError}</div>}
+              {memberActionSuccess && <div className="alert alert-success">{memberActionSuccess}</div>}
+
+              <div className="grid-2">
+                <div>
+                  <h4 className="chat-members-panel__subtitle">
+                    В чате: {sortedRoomMembers.length}
+                  </h4>
+                  {sortedRoomMembers.length === 0 ? (
+                    <div className="muted">Участников пока нет.</div>
+                  ) : (
+                    <div className="events-table-wrap">
+                      <table className="events-table">
+                        <thead>
+                          <tr>
+                            <th>Пользователь</th>
+                            <th>Роль</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedRoomMembers.map((member) => (
+                            <tr key={member.id}>
+                              <td>
+                                <strong>@{member.username ?? `id:${member.user_id}`}</strong>
+                              </td>
+                              <td>
+                                {member.role === 'admin' ? (
+                                  <span className="badge badge-accent">админ</span>
+                                ) : (
+                                  <span className="badge">участник</span>
+                                )}
+                              </td>
+                              <td className="events-table__actions">
+                                {member.role === 'admin' ? (
+                                  <span className="muted">—</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm btn-danger"
+                                    onClick={() => removeMemberFromActiveRoom(member)}
+                                    disabled={memberActionBusyId === member.user_id}
+                                  >
+                                    Удалить
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="chat-members-panel__subtitle">Добавить в чат</h4>
+                  {availableUsersForActiveRoom.length === 0 ? (
+                    <div className="muted">Все пользователи уже состоят в этом чате.</div>
+                  ) : (
+                    <div className="events-table-wrap">
+                      <table className="events-table">
+                        <thead>
+                          <tr>
+                            <th>Пользователь</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {availableUsersForActiveRoom.map((candidate) => (
+                            <tr key={candidate.id}>
+                              <td>
+                                <strong>@{candidate.username}</strong>
+                              </td>
+                              <td className="events-table__actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => addMemberToActiveRoom(candidate.id)}
+                                  disabled={memberActionBusyId === candidate.id}
+                                >
+                                  Добавить
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div
             className="chat-messages"
