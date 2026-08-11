@@ -96,6 +96,7 @@ export default function ChatPage() {
   const [memberActionError, setMemberActionError] = useState<string | null>(null)
   const [memberActionSuccess, setMemberActionSuccess] = useState<string | null>(null)
   const [memberActionBusyId, setMemberActionBusyId] = useState<number | null>(null)
+  const [showRoomSettings, setShowRoomSettings] = useState(false)
 
   // Unread
   const [unread, setUnread] = useState<Record<number, number>>({})
@@ -281,6 +282,7 @@ export default function ChatPage() {
       setActiveRoom(room)
       setMemberActionError(null)
       setMemberActionSuccess(null)
+      setShowRoomSettings(false)
       setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
       setReplyToMessage(null)
       setMessages(msgs)
@@ -313,6 +315,7 @@ export default function ChatPage() {
     setActiveRoomId(null)
     activeRoomIdRef.current = null
     setActiveRoom(null)
+    setShowRoomSettings(false)
     setMessages([])
     setReplyToMessage(null)
     // Перезагрузить список комнат
@@ -836,6 +839,15 @@ export default function ChatPage() {
             <span className="chat-conversation__members">
               {activeRoom?.member_count ?? 0} участ.
             </span>
+            {canManageMembers && (
+              <button
+                type="button"
+                className={`btn btn-ghost btn-sm chat-settings-toggle ${showRoomSettings ? 'is-active' : ''}`}
+                onClick={() => setShowRoomSettings((prev) => !prev)}
+              >
+                ⚙️ Настройки
+              </button>
+            )}
             <button
               type="button"
               className={`btn btn-ghost btn-sm chat-notification-toggle ${
@@ -853,11 +865,11 @@ export default function ChatPage() {
             </button>
           </header>
 
-          {canManageMembers && (
+          {canManageMembers && showRoomSettings && (
             <div className="chat-members-panel edit-card">
-              <h3 className="garage__form-title">Участники чата</h3>
+              <h3 className="garage__form-title">Настройки чата</h3>
               <p className="muted">
-                Здесь можно вручную добавлять пользователей в чат и удалять их при необходимости.
+                Здесь можно управлять составом участников и вручную добавлять пользователей в этот чат.
               </p>
 
               {memberActionError && <div className="alert alert-error">{memberActionError}</div>}

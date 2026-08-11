@@ -1775,6 +1775,11 @@ body:has(.home--guest) .site-footer::before {
   color: var(--text);
 }
 
+.chat-settings-toggle.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .events-table tbody tr:last-child td {
   border-bottom: none;
 }
