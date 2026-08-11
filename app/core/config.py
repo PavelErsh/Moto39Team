@@ -33,7 +33,8 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = "change-me-to-a-long-random-secret"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Держим access-токен 7 дней, чтобы пользователь не вылетал слишком часто.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS: список разрешённых origin через запятую или '*' — разрешить все.

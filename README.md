@@ -317,7 +317,7 @@ ssh deploy@server 'sudo cp /var/www/Moto39Team/deploy/nginx/moto39team.conf.temp
 
 | Токен          | Живёт              | Назначение                              |
 |----------------|--------------------|-----------------------------------------|
-| `access_token` | 30 минут (default) | Авторизация запросов (`Bearer`)         |
+| `access_token` | 7 дней (default)   | Авторизация запросов (`Bearer`)         |
 | `refresh_token`| 7 дней (default)   | Получение новой пары токенов            |
 
 Параметры настраиваются в `.env`:
@@ -325,7 +325,7 @@ ssh deploy@server 'sudo cp /var/www/Moto39Team/deploy/nginx/moto39team.conf.temp
 ```env
 SECRET_KEY=change-me-in-production
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
 REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
