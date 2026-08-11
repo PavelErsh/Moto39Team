@@ -314,8 +314,8 @@ async def add_members_endpoint(
     member = next(
         (m for m in room.members if m.user_id == current_user.id), None
     )
-    if not member or member.role != "admin":
-        raise HTTPException(403, "Только админ может добавлять участников")
+    if not current_user.is_superuser and (not member or member.role != "admin"):
+        raise HTTPException(403, "Только админ комнаты или суперпользователь может добавлять участников")
     await chat_crud.add_members(db, room_id, data.user_ids)
     return {"ok": True, "added": len(data.user_ids)}
 
@@ -334,8 +334,8 @@ async def remove_members_endpoint(
     member = next(
         (m for m in room.members if m.user_id == current_user.id), None
     )
-    if not member or member.role != "admin":
-        raise HTTPException(403, "Только админ может удалять участников")
+    if not current_user.is_superuser and (not member or member.role != "admin"):
+        raise HTTPException(403, "Только админ комнаты или суперпользователь может удалять участников")
     await chat_crud.remove_members(db, room_id, data.user_ids)
     return {"ok": True, "removed": len(data.user_ids)}
 

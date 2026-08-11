@@ -633,7 +633,9 @@ export default function ChatPage() {
 
   const activeRoomMuted = activeRoom?.notifications_enabled === false
   const currentRoomMember = activeRoom?.members.find((member) => member.user_id === user?.id) ?? null
-  const canManageMembers = activeRoom?.room_type === 'group' && currentRoomMember?.role === 'admin'
+  const canManageMembers =
+    activeRoom?.room_type === 'group' &&
+    (currentRoomMember?.role === 'admin' || Boolean(user?.is_superuser))
   const sortedRoomMembers = useMemo(
     () => [...(activeRoom?.members ?? [])].sort((a, b) => (a.username ?? '').localeCompare(b.username ?? '', 'ru')),
     [activeRoom],
@@ -650,6 +652,12 @@ export default function ChatPage() {
     setActiveRoom(room)
     setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
   }, [])
+
+  const ensureUsersLoaded = useCallback(async () => {
+    if (allUsers.length > 0) return
+    const users = await apiListUsers()
+    setAllUsers(users)
+  }, [allUsers.length])
 
   const toggleRoomNotifications = useCallback(async (roomId: number) => {
     const currentEnabled = activeRoom?.notifications_enabled ?? true
@@ -843,7 +851,17 @@ export default function ChatPage() {
               <button
                 type="button"
                 className={`btn btn-ghost btn-sm chat-settings-toggle ${showRoomSettings ? 'is-active' : ''}`}
-                onClick={() => setShowRoomSettings((prev) => !prev)}
+                onClick={async () => {
+                  const next = !showRoomSettings
+                  if (next) {
+                    try {
+                      await ensureUsersLoaded()
+                    } catch (err) {
+                      setMemberActionError(extractApiError(err))
+                    }
+                  }
+                  setShowRoomSettings(next)
+                }}
               >
                 ⚙️ Настройки
               </button>
