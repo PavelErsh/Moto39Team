@@ -3678,6 +3678,12 @@ html.low-end .nav-user:hover {
   background: #050705;
 }
 
+@media (max-width: 720px) {
+  .chat-conversation__head {
+    padding-top: calc(12px + max(env(safe-area-inset-top, 0px), 10px));
+  }
+}
+
 .chat-conversation__back-btn {
   flex: 0 0 auto;
   padding: 12px 20px;
