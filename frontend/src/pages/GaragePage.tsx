@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type TouchEvent } from 'react'
 import { extractApiError } from '../api/client'
 import {
   apiCreateMotorcycle,
@@ -50,6 +50,13 @@ export default function GaragePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [photoIndexes, setPhotoIndexes] = useState<Record<number, number>>({})
+  const [lightbox, setLightbox] = useState<{
+    motoId: number
+    photos: string[]
+    index: number
+    title: string
+  } | null>(null)
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -71,6 +78,7 @@ export default function GaragePage() {
   // Один hidden-input используется для активного id.
   const cardPhotoInputRef = useRef<HTMLInputElement>(null)
   const [cardUploadingId, setCardUploadingId] = useState<number | null>(null)
+  const touchStartXRef = useRef<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,6 +86,15 @@ export default function GaragePage() {
     try {
       const data = await apiListMyMotorcycles()
       setItems(data)
+      setPhotoIndexes((prev) => {
+        const next: Record<number, number> = {}
+        for (const item of data) {
+          const photos = getMotorcyclePhotos(item)
+          const current = prev[item.id] ?? 0
+          next[item.id] = photos.length > 0 ? Math.min(current, photos.length - 1) : 0
+        }
+        return next
+      })
     } catch (err) {
       setError(extractApiError(err))
     } finally {
@@ -88,6 +105,38 @@ export default function GaragePage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!lightbox) return
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setLightbox(null)
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        setLightbox((prev) => {
+          if (!prev || prev.photos.length <= 1) return prev
+          return {
+            ...prev,
+            index: (prev.index - 1 + prev.photos.length) % prev.photos.length,
+          }
+        })
+      }
+      if (e.key === 'ArrowRight') {
+        setLightbox((prev) => {
+          if (!prev || prev.photos.length <= 1) return prev
+          return {
+            ...prev,
+            index: (prev.index + 1) % prev.photos.length,
+          }
+        })
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [lightbox])
 
   function resetForm() {
     setForm({
@@ -259,6 +308,98 @@ export default function GaragePage() {
         photos,
       }
     })
+  }
+
+  function showPrevPhoto(motoId: number, count: number) {
+    if (count <= 1) return
+    setPhotoIndexes((prev) => {
+      const current = prev[motoId] ?? 0
+      return {
+        ...prev,
+        [motoId]: (current - 1 + count) % count,
+      }
+    })
+  }
+
+  function showNextPhoto(motoId: number, count: number) {
+    if (count <= 1) return
+    setPhotoIndexes((prev) => {
+      const current = prev[motoId] ?? 0
+      return {
+        ...prev,
+        [motoId]: (current + 1) % count,
+      }
+    })
+  }
+
+  function setActivePhoto(motoId: number, index: number) {
+    setPhotoIndexes((prev) => ({
+      ...prev,
+      [motoId]: index,
+    }))
+  }
+
+  function openLightbox(motoId: number, photos: string[], index: number, title: string) {
+    if (photos.length === 0) return
+    setLightbox({ motoId, photos, index, title })
+  }
+
+  function showPrevLightboxPhoto() {
+    setLightbox((prev) => {
+      if (!prev || prev.photos.length <= 1) return prev
+      return {
+        ...prev,
+        index: (prev.index - 1 + prev.photos.length) % prev.photos.length,
+      }
+    })
+  }
+
+  function showNextLightboxPhoto() {
+    setLightbox((prev) => {
+      if (!prev || prev.photos.length <= 1) return prev
+      return {
+        ...prev,
+        index: (prev.index + 1) % prev.photos.length,
+      }
+    })
+  }
+
+  function handlePhotoTouchStart(e: TouchEvent<HTMLButtonElement>) {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null
+  }
+
+  function handlePhotoTouchEnd(
+    e: TouchEvent<HTMLButtonElement>,
+    motoId: number,
+    count: number,
+  ) {
+    const startX = touchStartXRef.current
+    const endX = e.changedTouches[0]?.clientX ?? null
+    touchStartXRef.current = null
+    if (startX == null || endX == null || count <= 1) return
+
+    const deltaX = endX - startX
+    if (Math.abs(deltaX) < 40) return
+
+    if (deltaX < 0) showNextPhoto(motoId, count)
+    else showPrevPhoto(motoId, count)
+  }
+
+  function handleLightboxTouchStart(e: TouchEvent<HTMLDivElement>) {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null
+  }
+
+  function handleLightboxTouchEnd(e: TouchEvent<HTMLDivElement>) {
+    const startX = touchStartXRef.current
+    const endX = e.changedTouches[0]?.clientX ?? null
+    touchStartXRef.current = null
+    if (startX == null || endX == null || !lightbox || lightbox.photos.length <= 1) return
+
+    const deltaX = endX - startX
+    if (Math.abs(deltaX) < 40) return
+
+    if (deltaX < 0) showNextLightboxPhoto()
+    else showPrevLightboxPhoto()
   }
 
   return (
@@ -475,13 +616,54 @@ export default function GaragePage() {
         <div className="moto-list">
           {items.map((m) => {
             const photos = getMotorcyclePhotos(m)
-            const coverPhoto = photos[0] ?? null
+            const activeIndex = photos.length > 0 ? Math.min(photoIndexes[m.id] ?? 0, photos.length - 1) : 0
+            const coverPhoto = photos[activeIndex] ?? null
 
             return (
             <article key={m.id} className="moto-card">
               {coverPhoto ? (
                 <div className="moto-card__photo">
-                  <img src={coverPhoto} alt={`${m.brand} ${m.model}`} />
+                  <button
+                    type="button"
+                    className="moto-card__photo-button"
+                    onClick={() =>
+                      openLightbox(m.id, photos, activeIndex, `${m.brand} ${m.model}`)
+                    }
+                    onTouchStart={handlePhotoTouchStart}
+                    onTouchEnd={(e) => handlePhotoTouchEnd(e, m.id, photos.length)}
+                    aria-label={`Открыть фото мотоцикла ${m.brand} ${m.model}`}
+                  >
+                    <img src={coverPhoto} alt={`${m.brand} ${m.model}`} />
+                  </button>
+                  {photos.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        className="moto-card__nav moto-card__nav--prev"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          showPrevPhoto(m.id, photos.length)
+                        }}
+                        aria-label="Предыдущее фото"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        className="moto-card__nav moto-card__nav--next"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          showNextPhoto(m.id, photos.length)
+                        }}
+                        aria-label="Следующее фото"
+                      >
+                        ›
+                      </button>
+                      <div className="moto-card__counter">
+                        {activeIndex + 1} / {photos.length}
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="moto-card__photo moto-card__photo--empty">
@@ -493,9 +675,16 @@ export default function GaragePage() {
                   {photos.map((url, index) => (
                     <div
                       key={url}
-                      className={`moto-card__thumb ${index === 0 ? 'is-active' : ''}`}
+                      className={`moto-card__thumb ${index === activeIndex ? 'is-active' : ''}`}
                     >
-                      <img src={url} alt={`${m.brand} ${m.model} ${index + 1}`} />
+                      <button
+                        type="button"
+                        className="moto-card__thumb-button"
+                        onClick={() => setActivePhoto(m.id, index)}
+                        aria-label={`Показать фото ${index + 1}`}
+                      >
+                        <img src={url} alt={`${m.brand} ${m.model} ${index + 1}`} />
+                      </button>
                       <button
                         type="button"
                         className="moto-card__thumb-remove"
@@ -568,6 +757,57 @@ export default function GaragePage() {
               </div>
             </article>
           )})}
+        </div>
+      )}
+
+      {lightbox && (
+        <div className="lightbox-overlay" onClick={() => setLightbox(null)}>
+          <div
+            className="lightbox"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleLightboxTouchStart}
+            onTouchEnd={handleLightboxTouchEnd}
+          >
+            <button
+              type="button"
+              className="lightbox__close"
+              onClick={() => setLightbox(null)}
+              aria-label="Закрыть фото"
+            >
+              ×
+            </button>
+            <img
+              className="lightbox__image"
+              src={lightbox.photos[lightbox.index]}
+              alt={lightbox.title}
+            />
+            {lightbox.photos.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="lightbox__nav lightbox__nav--prev"
+                  onClick={showPrevLightboxPhoto}
+                  aria-label="Предыдущее фото"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="lightbox__nav lightbox__nav--next"
+                  onClick={showNextLightboxPhoto}
+                  aria-label="Следующее фото"
+                >
+                  ›
+                </button>
+              </>
+            )}
+            <div className="lightbox__caption">
+              <strong>{lightbox.title}</strong>
+              <span>
+                {lightbox.index + 1} / {lightbox.photos.length}
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </section>
