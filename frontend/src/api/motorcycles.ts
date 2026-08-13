@@ -10,6 +10,7 @@ export interface Motorcycle {
   color: string | null
   description: string | null
   photo_url: string | null
+  photos: string[]
   created_at: string
   updated_at: string
 }
@@ -22,6 +23,7 @@ export interface MotorcyclePayload {
   color?: string | null
   description?: string | null
   photo_url?: string | null
+  photos?: string[]
 }
 
 export async function apiListMyMotorcycles(): Promise<Motorcycle[]> {
@@ -55,7 +57,7 @@ export async function apiUploadMotorcyclePhoto(
   const form = new FormData()
   form.append('file', file)
   const res = await api.post<Motorcycle>(`/motorcycles/${id}/photo`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': undefined as unknown as string },
   })
   return res.data
 }
@@ -66,7 +68,7 @@ export async function apiUploadMotorcycleImage(
   const form = new FormData()
   form.append('file', file)
   const res = await api.post<{ url: string }>('/motorcycles/upload-photo', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': undefined as unknown as string },
   })
   return res.data
 }

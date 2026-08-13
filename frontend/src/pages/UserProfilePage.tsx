@@ -4,6 +4,14 @@ import { extractApiError } from '../api/client'
 import { apiGetPublicUser, type PublicUser } from '../api/motorcycles'
 import RiderLocationMap from '../components/RiderLocationMap'
 
+function getMotorcyclePhotos(m: {
+  photo_url: string | null
+  photos?: string[]
+}): string[] {
+  const all = [...(m.photos ?? []), ...(m.photo_url ? [m.photo_url] : [])]
+  return Array.from(new Set(all.filter(Boolean)))
+}
+
 function formatLastSeen(iso: string | null | undefined): string | null {
   if (!iso) return null
   const then = new Date(iso).getTime()
@@ -165,9 +173,12 @@ export default function UserProfilePage() {
         <div className="moto-list">
           {profile.motorcycles.map((m) => (
             <article key={m.id} className="moto-card">
-              {m.photo_url ? (
+              {getMotorcyclePhotos(m).length > 0 ? (
                 <div className="moto-card__photo">
-                  <img src={m.photo_url} alt={`${m.brand} ${m.model}`} />
+                  <img
+                    src={getMotorcyclePhotos(m)[0]}
+                    alt={`${m.brand} ${m.model}`}
+                  />
                 </div>
               ) : (
                 <div className="moto-card__photo moto-card__photo--empty">
@@ -185,6 +196,9 @@ export default function UserProfilePage() {
                 </div>
                 {m.description && (
                   <p className="moto-card__desc">{m.description}</p>
+                )}
+                {getMotorcyclePhotos(m).length > 1 && (
+                  <p className="muted">Фото: {getMotorcyclePhotos(m).length}</p>
                 )}
               </div>
             </article>

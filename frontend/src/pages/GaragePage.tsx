@@ -19,7 +19,15 @@ function toPayload(form: {
   color: string
   description: string
   photo_url: string
+  photos: string[]
 }): MotorcyclePayload {
+  const photos = Array.from(
+    new Set(
+      form.photos
+        .map((url) => url.trim())
+        .filter(Boolean),
+    ),
+  )
   return {
     brand: form.brand.trim(),
     model: form.model.trim(),
@@ -27,8 +35,14 @@ function toPayload(form: {
     engine_cc: form.engine_cc ? Number(form.engine_cc) : null,
     color: form.color.trim() || null,
     description: form.description.trim() || null,
-    photo_url: form.photo_url.trim() || null,
+    photo_url: photos[0] ?? (form.photo_url.trim() || null),
+    photos,
   }
+}
+
+function getMotorcyclePhotos(m: Pick<Motorcycle, 'photo_url' | 'photos'>): string[] {
+  const all = [...(m.photos ?? []), ...(m.photo_url ? [m.photo_url] : [])]
+  return Array.from(new Set(all.filter(Boolean)))
 }
 
 export default function GaragePage() {
@@ -49,6 +63,7 @@ export default function GaragePage() {
     color: '',
     description: '',
     photo_url: '',
+    photos: [] as string[],
   })
 
   const formPhotoInputRef = useRef<HTMLInputElement>(null)
@@ -83,6 +98,7 @@ export default function GaragePage() {
       color: '',
       description: '',
       photo_url: '',
+      photos: [],
     })
     setEditingId(null)
   }
@@ -102,6 +118,7 @@ export default function GaragePage() {
       color: m.color ?? '',
       description: m.description ?? '',
       photo_url: m.photo_url ?? '',
+      photos: getMotorcyclePhotos(m),
     })
     setShowForm(true)
   }
@@ -152,14 +169,21 @@ export default function GaragePage() {
    * URL — сам мотоцикл создастся при сабмите формы.
    */
   async function onFormPhotoChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (!file) return
+    if (files.length === 0) return
     setError(null)
     setPhotoUploading(true)
     try {
-      const { url } = await apiUploadMotorcycleImage(file)
-      setForm((f) => ({ ...f, photo_url: url }))
+      const uploaded = await Promise.all(
+        files.map((file) => apiUploadMotorcycleImage(file)),
+      )
+      setForm((f) => {
+        const photos = Array.from(
+          new Set([...f.photos, ...uploaded.map(({ url }) => url)]),
+        )
+        return { ...f, photo_url: photos[0] ?? '', photos }
+      })
     } catch (err) {
       setError(extractApiError(err))
     } finally {
@@ -194,15 +218,47 @@ export default function GaragePage() {
   }
 
   async function onRemoveCardPhoto(m: Motorcycle) {
-    if (!m.photo_url) return
-    if (!window.confirm('Удалить фото мотоцикла?')) return
+    const photos = getMotorcyclePhotos(m)
+    if (photos.length === 0) return
+    if (!window.confirm('Удалить все фото мотоцикла?')) return
     setError(null)
     try {
-      await apiUpdateMotorcycle(m.id, { photo_url: null })
+      await apiUpdateMotorcycle(m.id, { photo_url: null, photos: [] })
       await load()
     } catch (err) {
       setError(extractApiError(err))
     }
+  }
+
+  async function onRemoveSingleCardPhoto(m: Motorcycle, url: string) {
+    const photos = getMotorcyclePhotos(m)
+    if (!photos.includes(url)) return
+    if (!window.confirm('Удалить это фото мотоцикла?')) return
+    setError(null)
+    setBusy(true)
+    try {
+      const nextPhotos = photos.filter((item) => item !== url)
+      await apiUpdateMotorcycle(m.id, {
+        photo_url: nextPhotos[0] ?? null,
+        photos: nextPhotos,
+      })
+      await load()
+    } catch (err) {
+      setError(extractApiError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function removeFormPhoto(url: string) {
+    setForm((f) => {
+      const photos = f.photos.filter((item) => item !== url)
+      return {
+        ...f,
+        photo_url: photos[0] ?? '',
+        photos,
+      }
+    })
   }
 
   return (
@@ -312,11 +368,24 @@ export default function GaragePage() {
             </label>
 
             <div className="field">
-              <span>Фото мотоцикла</span>
+              <span>Фотографии</span>
               <div className="photo-picker">
-                {form.photo_url ? (
-                  <div className="photo-picker__preview">
-                    <img src={form.photo_url} alt="фото мотоцикла" />
+                {form.photos.length > 0 ? (
+                  <div className="gallery-edit">
+                    {form.photos.map((url) => (
+                      <div key={url} className="gallery-edit__item">
+                        <img src={url} alt="Фото мотоцикла" loading="lazy" />
+                        <button
+                          type="button"
+                          className="gallery-edit__remove"
+                          onClick={() => removeFormPhoto(url)}
+                          disabled={busy || photoUploading}
+                          aria-label="Удалить фото"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="photo-picker__placeholder">🏍️</div>
@@ -330,26 +399,27 @@ export default function GaragePage() {
                   >
                     {photoUploading
                       ? 'Загрузка…'
-                      : form.photo_url
-                        ? 'Сменить фото'
+                      : form.photos.length > 0
+                        ? '📷 Добавить ещё фото'
                         : '📷 Загрузить фото'}
                   </button>
-                  {form.photo_url && (
+                  {form.photos.length > 0 && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm btn-danger"
                       onClick={() =>
-                        setForm((f) => ({ ...f, photo_url: '' }))
+                        setForm((f) => ({ ...f, photo_url: '', photos: [] }))
                       }
                       disabled={busy || photoUploading}
                     >
-                      Убрать
+                      Убрать все
                     </button>
                   )}
                   <input
                     ref={formPhotoInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/gif,image/webp"
+                    multiple
                     onChange={onFormPhotoChange}
                     style={{ display: 'none' }}
                   />
@@ -403,15 +473,41 @@ export default function GaragePage() {
         </div>
       ) : (
         <div className="moto-list">
-          {items.map((m) => (
+          {items.map((m) => {
+            const photos = getMotorcyclePhotos(m)
+            const coverPhoto = photos[0] ?? null
+
+            return (
             <article key={m.id} className="moto-card">
-              {m.photo_url ? (
+              {coverPhoto ? (
                 <div className="moto-card__photo">
-                  <img src={m.photo_url} alt={`${m.brand} ${m.model}`} />
+                  <img src={coverPhoto} alt={`${m.brand} ${m.model}`} />
                 </div>
               ) : (
                 <div className="moto-card__photo moto-card__photo--empty">
                   🏍️
+                </div>
+              )}
+              {photos.length > 1 && (
+                <div className="moto-card__gallery">
+                  {photos.map((url, index) => (
+                    <div
+                      key={url}
+                      className={`moto-card__thumb ${index === 0 ? 'is-active' : ''}`}
+                    >
+                      <img src={url} alt={`${m.brand} ${m.model} ${index + 1}`} />
+                      <button
+                        type="button"
+                        className="moto-card__thumb-remove"
+                        onClick={() => onRemoveSingleCardPhoto(m, url)}
+                        disabled={busy}
+                        aria-label={`Удалить фото ${index + 1}`}
+                        title="Удалить фото"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
               <div className="moto-card__body">
@@ -426,6 +522,9 @@ export default function GaragePage() {
                 {m.description && (
                   <p className="moto-card__desc">{m.description}</p>
                 )}
+                {photos.length > 1 && (
+                  <p className="muted">Фото в галерее: {photos.length}</p>
+                )}
               </div>
               <div className="moto-card__actions">
                 <button
@@ -436,18 +535,18 @@ export default function GaragePage() {
                 >
                   {cardUploadingId === m.id
                     ? 'Загрузка…'
-                    : m.photo_url
-                      ? '📷 Сменить фото'
+                    : photos.length > 0
+                      ? '📷 Добавить фото'
                       : '📷 Фото'}
                 </button>
-                {m.photo_url && (
+                {photos.length > 0 && (
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm btn-danger"
                     onClick={() => onRemoveCardPhoto(m)}
                     disabled={busy}
                   >
-                    Убрать фото
+                    Убрать все фото
                   </button>
                 )}
                 <button
@@ -468,7 +567,7 @@ export default function GaragePage() {
                 </button>
               </div>
             </article>
-          ))}
+          )})}
         </div>
       )}
     </section>
