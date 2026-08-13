@@ -277,6 +277,7 @@ export default function GaragePage() {
                   type="number"
                   min={1}
                   max={10000}
+                  step="any"
                   value={form.engine_cc}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, engine_cc: e.target.value }))
