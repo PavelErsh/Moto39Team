@@ -113,7 +113,7 @@ export function useChat() {
                 },
               }))
               // Показать нативное уведомление о новом сообщении
-              const sender = msg.sender_username || 'Кто-то'
+              const sender = msg.sender_full_name || msg.sender_username || 'Кто-то'
               const preview = (msg.content || '').slice(0, 120)
               notify(`💬 ${sender}`, {
                 body: preview,

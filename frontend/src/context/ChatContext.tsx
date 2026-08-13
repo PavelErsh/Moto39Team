@@ -110,7 +110,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (data.type === 'message') {
           const msg = data.message as MessageItem
           const rid = msg.room_id
-          const sender = msg.sender_username || 'Кто-то'
+          const sender = msg.sender_full_name || msg.sender_username || 'Кто-то'
           const isOwnMessage = msg.sender_id === user?.id
 
           // Обновить последнее сообщение у комнаты в списке

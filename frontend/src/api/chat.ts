@@ -38,6 +38,7 @@ export interface MessageItem {
   is_deleted: boolean
   created_at: string
   updated_at: string
+  sender_full_name: string | null
   sender_username: string | null
   sender_avatar_url: string | null
   sender_sponsor_badge: string | null
@@ -48,6 +49,7 @@ export interface MessageItem {
 export interface ReplyMessageItem {
   id: number
   sender_id: number | null
+  sender_full_name: string | null
   sender_username: string | null
   content: string | null
   message_type: string

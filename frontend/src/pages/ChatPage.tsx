@@ -64,6 +64,7 @@ function toReplyMessageItem(message: MessageItem): ReplyMessageItem {
   return {
     id: message.id,
     sender_id: message.sender_id,
+    sender_full_name: message.sender_full_name,
     sender_username: message.sender_username,
     content: message.content,
     message_type: message.message_type,
@@ -187,7 +188,7 @@ export default function ChatPage() {
             const targetRoom = roomsRef.current.find((room) => room.id === msg.room_id)
             if (targetRoom?.notifications_enabled !== false) {
               // Показать нативное уведомление о новом сообщении
-              const sender = msg.sender_username || 'Кто-то'
+              const sender = msg.sender_full_name || msg.sender_username || 'Кто-то'
               const preview = (msg.content || '').slice(0, 120)
               notify(`💬 ${sender}`, {
                 body: preview,
@@ -469,6 +470,7 @@ export default function ChatPage() {
       is_deleted: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      sender_full_name: user?.full_name ?? null,
       sender_username: user?.username ?? null,
       sender_avatar_url: user?.avatar_url ?? null,
       sender_sponsor_badge: user?.sponsor_badge ?? null,
@@ -1018,7 +1020,7 @@ export default function ChatPage() {
                     {showHeader && (
                       <div className="chat-msg__header">
                         <span className="chat-msg__sender">
-                          {msg.sender_username || '?'}
+                          {msg.sender_full_name || msg.sender_username || '?'}
                           {msg.sender_sponsor_badge && (
                             <span> {msg.sender_sponsor_badge}</span>
                           )}
@@ -1052,6 +1054,7 @@ export default function ChatPage() {
                               is_deleted: replyTo.is_deleted,
                               created_at: msg.created_at,
                               updated_at: msg.created_at,
+                              sender_full_name: replyTo.sender_full_name,
                               sender_username: replyTo.sender_username,
                               sender_avatar_url: null,
                               sender_sponsor_badge: null,
@@ -1063,7 +1066,7 @@ export default function ChatPage() {
                         >
                           <span className="chat-msg__reply-label">Ответ на сообщение</span>
                           <span className="chat-msg__reply-author">
-                            {msg.reply_to.sender_username || 'Пользователь'}
+                            {msg.reply_to.sender_full_name || msg.reply_to.sender_username || 'Пользователь'}
                           </span>
                           <span className="chat-msg__reply-text">
                             {replyPreviewText(msg.reply_to)}

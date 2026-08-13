@@ -98,7 +98,9 @@ def _dm_partner_name(room: ChatRoom, current_user_id: int) -> str | None:
         return None
     for member in room.members:
         if member.user_id != current_user_id:
-            return member.user.username if member.user else None
+            if not member.user:
+                return None
+            return member.user.full_name or member.user.username
     return None
 
 
@@ -121,6 +123,7 @@ def _message_to_read_for_user(msg, current_user_id: int) -> MessageRead:
         is_deleted=msg.is_deleted,
         created_at=msg.created_at,
         updated_at=msg.updated_at,
+        sender_full_name=sender.full_name if sender else None,
         sender_username=sender.username if sender else None,
         sender_avatar_url=sender.avatar_url if sender else None,
         sender_sponsor_badge=sender.sponsor_badge if sender else None,
@@ -128,6 +131,7 @@ def _message_to_read_for_user(msg, current_user_id: int) -> MessageRead:
             ReplyMessageRead(
                 id=reply_to.id,
                 sender_id=reply_to.sender_id,
+                sender_full_name=reply_to.sender.full_name if reply_to.sender else None,
                 sender_username=reply_to.sender.username if reply_to.sender else None,
                 content=reply_to.content,
                 message_type=reply_to.message_type,

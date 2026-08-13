@@ -17,6 +17,7 @@ class MessageRead(BaseModel):
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
+    sender_full_name: str | None = None
     sender_username: str | None = None
     sender_avatar_url: str | None = None
     sender_sponsor_badge: str | None = None
@@ -38,6 +39,7 @@ class ReplyMessageRead(BaseModel):
     """Краткое представление сообщения, на которое дан ответ."""
     id: int
     sender_id: int | None
+    sender_full_name: str | None = None
     sender_username: str | None = None
     content: str | None
     message_type: str
