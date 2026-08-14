@@ -1,5 +1,6 @@
 """CRUD-операции для чата."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import time
 
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,9 +9,12 @@ from sqlalchemy.orm import selectinload
 from app.models.chat import ChatMember, ChatRoom, Message, MessageReaction
 from app.models.user import User
 from app.schemas.chat import ChatRoomCreate, MessageCreate
+from app.api.v1._uploads import delete_uploaded_file_by_url
 
 
 DEFAULT_BIKE_CHAT_NAME = "БАЙКЧАТ"
+CHAT_IMAGE_TTL_DAYS = 14
+_last_expired_chat_image_cleanup_monotonic = 0.0
 
 
 # ── Комнаты ─────────────────────────────────────────────────────
@@ -298,6 +302,57 @@ async def save_message(
         msg.reply_to = reply_result.scalar_one_or_none()
 
     return msg
+
+
+async def purge_expired_chat_images(
+    db: AsyncSession,
+    *,
+    force: bool = False,
+    min_interval_seconds: float = 3600,
+) -> int:
+    """Удалить chat image-сообщения и файлы старше TTL.
+
+    Сообщения не удаляем физически из БД: помечаем как удалённые и очищаем
+    content/image_url, чтобы не ломать ссылки на reply/reactions/history.
+    """
+    global _last_expired_chat_image_cleanup_monotonic
+
+    now_mono = time.monotonic()
+    if not force and now_mono - _last_expired_chat_image_cleanup_monotonic < min_interval_seconds:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=CHAT_IMAGE_TTL_DAYS)
+    result = await db.execute(
+        select(Message).where(
+            Message.message_type == "image",
+            Message.image_url.is_not(None),
+            Message.created_at < cutoff,
+            Message.is_deleted.is_(False),
+        )
+    )
+    expired = list(result.scalars().all())
+    if not expired:
+        _last_expired_chat_image_cleanup_monotonic = now_mono
+        return 0
+
+    affected_room_ids: set[int] = set()
+    for message in expired:
+        delete_uploaded_file_by_url(message.image_url)
+        message.image_url = None
+        message.content = None
+        message.is_deleted = True
+        affected_room_ids.add(message.room_id)
+
+    if affected_room_ids:
+        await db.execute(
+            update(ChatRoom)
+            .where(ChatRoom.id.in_(affected_room_ids))
+            .values(updated_at=datetime.now(timezone.utc))
+        )
+
+    await db.commit()
+    _last_expired_chat_image_cleanup_monotonic = now_mono
+    return len(expired)
 
 
 async def get_room_messages(

@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.crud import chat as chat_crud
+from app.db.session import AsyncSessionLocal
 from app.db import base_all  # noqa: F401  # регистрирует все модели
 from app.services.ws_manager import close_redis, init_redis
 
@@ -18,6 +20,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация и очистка ресурсов при старте/остановке приложения."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await chat_crud.purge_expired_chat_images(db, force=True, min_interval_seconds=0)
+    except Exception:
+        logger.exception("Failed to purge expired chat images on startup")
+
     # Инициализация Redis Pub/Sub (для чата)
     try:
         await init_redis(settings.REDIS_URL)

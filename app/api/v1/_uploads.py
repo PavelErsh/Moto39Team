@@ -111,3 +111,27 @@ async def save_uploaded_image(file: UploadFile, subdir: str) -> str:
     dest.write_bytes(data)
 
     return f"/media/{subdir}/{unique_name}"
+
+
+def delete_uploaded_file_by_url(url: str | None) -> None:
+    """Удалить ранее загруженный файл по его относительному URL /media/... ."""
+    if not url or not url.startswith("/media/"):
+        return
+
+    relative = url.removeprefix("/media/").strip("/")
+    if not relative:
+        return
+
+    path = (Path(settings.UPLOAD_DIR) / relative).resolve()
+    upload_root = Path(settings.UPLOAD_DIR).resolve()
+
+    try:
+        path.relative_to(upload_root)
+    except ValueError:
+        return
+
+    if path.is_file():
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass

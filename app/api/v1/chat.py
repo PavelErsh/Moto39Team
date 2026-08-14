@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from fastapi import File, UploadFile, status
 
 from fastapi import (
     APIRouter,
@@ -14,6 +15,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.v1._uploads import save_uploaded_image
 from app.crud import chat as chat_crud
 from app.models.chat import ChatMember, ChatRoom
 from app.schemas.chat import (
@@ -31,6 +33,7 @@ from app.schemas.chat import (
     WsIncoming,
     WsOutgoing,
 )
+from app.schemas.reference import ImageUploadResponse
 from app.services.ws_manager import (
     connect_room,
     disconnect_room,
@@ -370,11 +373,27 @@ async def list_messages(
     """Получить сообщения комнаты (пагинация назад)."""
     if not await chat_crud.is_member(db, room_id, current_user.id):
         raise HTTPException(403, "Вы не участник этой комнаты")
+    await chat_crud.purge_expired_chat_images(db)
     messages = await chat_crud.get_room_messages(
         db, room_id, before_id=before_id, limit=limit
     )
     # get_room_messages возвращает DESC, переворачиваем для хронологического порядка
     return [_message_to_read_for_user(m, current_user.id) for m in reversed(messages)]
+
+
+@router.post(
+    "/upload-image",
+    response_model=ImageUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_chat_image(
+    _: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> ImageUploadResponse:
+    await chat_crud.purge_expired_chat_images(db)
+    url = await save_uploaded_image(file, "chat")
+    return ImageUploadResponse(url=url)
 
 
 @router.post("/rooms/{room_id}/read", response_model=dict)
@@ -492,6 +511,7 @@ async def chat_websocket(websocket: WebSocket):
             elif msg.type == "message":
                 if not msg.room_id:
                     continue
+                await chat_crud.purge_expired_chat_images(session)
                 if not await chat_crud.is_member(session, msg.room_id, user_id):
                     await websocket.send_json(
                         {"type": "error", "error": "Вы не участник комнаты"}
@@ -519,13 +539,23 @@ async def chat_websocket(websocket: WebSocket):
                 _user_burst_times[user_id] = burst_times
                 _user_last_message[user_id] = now
 
+                is_image_message = (msg.message_type or "text") == "image"
+
                 # Sanitize content
                 sanitized_content = _sanitize_content(msg.content)
-                if sanitized_content is None or len(sanitized_content.strip()) == 0:
-                    await websocket.send_json(
-                        {"type": "error", "error": "Сообщение не может быть пустым"}
-                    )
-                    continue
+                if is_image_message:
+                    if not msg.image_url:
+                        await websocket.send_json(
+                            {"type": "error", "error": "Изображение не загружено"}
+                        )
+                        continue
+                    sanitized_content = sanitized_content.strip() if sanitized_content else None
+                else:
+                    if sanitized_content is None or len(sanitized_content.strip()) == 0:
+                        await websocket.send_json(
+                            {"type": "error", "error": "Сообщение не может быть пустым"}
+                        )
+                        continue
 
                 # Сохраняем в БД
                 reply_to_message_id = msg.reply_to_message_id
