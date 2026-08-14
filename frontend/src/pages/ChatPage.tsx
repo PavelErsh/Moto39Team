@@ -650,6 +650,11 @@ export default function ChatPage() {
     [unread],
   )
 
+  const visibleRooms = useMemo(
+    () => rooms.filter((room) => room.last_message != null),
+    [rooms],
+  )
+
   const activeRoomMuted = activeRoom?.notifications_enabled === false
   const currentRoomMember = activeRoom?.members.find((member) => member.user_id === user?.id) ?? null
   const canManageMembers =
@@ -835,15 +840,15 @@ export default function ChatPage() {
 
           {loadingRooms ? (
             <div className="muted">Загрузка…</div>
-          ) : rooms.length === 0 ? (
+          ) : visibleRooms.length === 0 ? (
             <div className="empty-state">
               <div className="empty-state__icon">💬</div>
-              <p className="muted">У вас пока нет чатов. Создайте первый!</p>
+              <p className="muted">Пока нет переписок с сообщениями.</p>
             </div>
           ) : (
             <div className="chat-room-list-wrap">
               <ul className="chat-room-list">
-                {rooms.map((room) => (
+                {visibleRooms.map((room) => (
                   <li key={room.id} className="chat-room-item">
                     <button
                       type="button"
