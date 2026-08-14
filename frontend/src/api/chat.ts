@@ -117,6 +117,29 @@ export async function apiGetMessages(
   return res.data
 }
 
+export async function apiUploadChatImage(
+  file: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<{ url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<{ url: string }>('/chat/upload-image', form, {
+    headers: { 'Content-Type': undefined as unknown as string },
+    signal,
+    onUploadProgress: (event) => {
+      if (!onProgress) return
+      const total = event.total ?? 0
+      if (total <= 0) {
+        onProgress(0)
+        return
+      }
+      onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / total) * 100))))
+    },
+  })
+  return res.data
+}
+
 export async function apiMarkRead(roomId: number, messageId: number): Promise<void> {
   await api.post(`/chat/rooms/${roomId}/read`, null, {
     params: { message_id: messageId },

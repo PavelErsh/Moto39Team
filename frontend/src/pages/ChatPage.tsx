@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, PointerEvent, TouchEvent, UIEvent } from 'react'
+import axios from 'axios'
 import { useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
@@ -11,6 +12,7 @@ import {
   apiMarkRead,
   apiRemoveMembers,
   apiGetUnread,
+  apiUploadChatImage,
   apiUpdateRoomNotifications,
   type ChatRoomItem,
   type ChatMemberItem,
@@ -110,6 +112,11 @@ export default function ChatPage() {
   const [memberActionSuccess, setMemberActionSuccess] = useState<string | null>(null)
   const [memberActionBusyId, setMemberActionBusyId] = useState<number | null>(null)
   const [showRoomSettings, setShowRoomSettings] = useState(false)
+  const [isCompressingImage, setIsCompressingImage] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [sendingImage, setSendingImage] = useState(false)
+  const [imageUploadProgress, setImageUploadProgress] = useState(0)
+  const [imageError, setImageError] = useState<string | null>(null)
 
   // Unread
   const [unread, setUnread] = useState<Record<number, number>>({})
@@ -137,6 +144,9 @@ export default function ChatPage() {
   const reactionLongPressTimerRef = useRef<number | null>(null)
   const reactionLongPressTriggeredRef = useRef(false)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const imageUploadAbortRef = useRef<AbortController | null>(null)
+  const cancelImageFlowRef = useRef(false)
   const conversationHeadRef = useRef<HTMLElement>(null)
   const lastMessagesScrollTopRef = useRef(0)
   const isAutoScrollingToHeaderRef = useRef(false)
@@ -573,6 +583,150 @@ export default function ChatPage() {
 
     return () => clearTimeout(checkReplaced)
   }, [draft, activeRoomId, replyToMessage, user])
+
+  const compressImageForChat = useCallback(async (file: File): Promise<File> => {
+    const bitmap = await createImageBitmap(file)
+    const maxSide = 1600
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      throw new Error('Не удалось подготовить изображение')
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.8)
+    })
+    if (!blob) throw new Error('Не удалось сжать изображение')
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'chat-image'}.jpg`, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    })
+  }, [])
+
+  const sendImageMessage = useCallback(async (file: File) => {
+    if (!activeRoomId) return
+    setImageError(null)
+    setIsCompressingImage(true)
+    setImageUploadProgress(0)
+    cancelImageFlowRef.current = false
+    imageUploadAbortRef.current?.abort()
+    imageUploadAbortRef.current = new AbortController()
+
+    try {
+      const compressed = await compressImageForChat(file)
+      if (cancelImageFlowRef.current) {
+        throw new Error('Загрузка фото отменена')
+      }
+
+      setIsCompressingImage(false)
+      setUploadingImage(true)
+      const { url } = await apiUploadChatImage(
+        compressed,
+        setImageUploadProgress,
+        imageUploadAbortRef.current.signal,
+      )
+      if (cancelImageFlowRef.current) {
+        throw new Error('Загрузка фото отменена')
+      }
+      setUploadingImage(false)
+      setImageUploadProgress(100)
+      setSendingImage(true)
+
+      const optimisticId = -Date.now()
+      const optimisticMsg: MessageItem = {
+        id: optimisticId,
+        room_id: activeRoomId,
+        sender_id: user?.id ?? null,
+        content: null,
+        message_type: 'image',
+        image_url: url,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sender_full_name: user?.full_name ?? null,
+        sender_username: user?.username ?? null,
+        sender_avatar_url: user?.avatar_url ?? null,
+        sender_sponsor_badge: user?.sponsor_badge ?? null,
+        reply_to: replyToMessage ? toReplyMessageItem(replyToMessage) : null,
+        reactions: [],
+      }
+
+      setMessages((prev) => [...prev, optimisticMsg])
+      const replyTargetId = replyToMessage?.id ?? null
+      setReplyToMessage(null)
+      requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }))
+
+      const ws = wsRef.current
+      if (!ws) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+        throw new Error('WebSocket не подключён')
+      }
+
+      const payload = JSON.stringify({
+        type: 'message',
+        room_id: activeRoomId,
+        content: null,
+        message_type: 'image',
+        image_url: url,
+        reply_to_message_id: replyTargetId,
+      })
+
+      if (ws.readyState !== WebSocket.OPEN) {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = window.setTimeout(() => {
+            ws.removeEventListener('open', onOpen)
+            reject(new Error('WebSocket не открылся'))
+          }, 5000)
+          const onOpen = () => {
+            window.clearTimeout(timeout)
+            ws.removeEventListener('open', onOpen)
+            resolve()
+          }
+          ws.addEventListener('open', onOpen)
+        })
+      }
+
+      ws.send(payload)
+    } catch (err) {
+      if (axios.isCancel(err) || (err instanceof Error && err.message === 'canceled')) {
+        setImageError('Загрузка фото отменена')
+      } else {
+        setImageError(err instanceof Error ? err.message : 'Не удалось отправить фото')
+      }
+    } finally {
+      setIsCompressingImage(false)
+      setUploadingImage(false)
+      setSendingImage(false)
+      window.setTimeout(() => setImageUploadProgress(0), 400)
+      imageUploadAbortRef.current = null
+      cancelImageFlowRef.current = false
+      if (imageInputRef.current) imageInputRef.current.value = ''
+    }
+  }, [activeRoomId, compressImageForChat, replyToMessage, user])
+
+  const cancelImageUpload = useCallback(() => {
+    cancelImageFlowRef.current = true
+    imageUploadAbortRef.current?.abort()
+    setIsCompressingImage(false)
+    setUploadingImage(false)
+    setSendingImage(false)
+    setImageUploadProgress(0)
+  }, [])
+
+  const onPickImage = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    await sendImageMessage(file)
+  }, [sendImageMessage])
 
   const onKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1244,7 +1398,48 @@ export default function ChatPage() {
               </div>
             )}
 
+            {imageError && <div className="alert alert-error">{imageError}</div>}
+            {(isCompressingImage || uploadingImage) && (
+              <div className="chat-upload-progress" aria-live="polite">
+                <div className="chat-upload-progress__meta">
+                  <span>{isCompressingImage ? 'Сжимаю фото…' : 'Загрузка фото…'}</span>
+                  <span>{isCompressingImage ? 'Подготовка' : `${imageUploadProgress}%`}</span>
+                </div>
+                <div className="chat-upload-progress__track">
+                  <div
+                    className="chat-upload-progress__bar"
+                    style={{ width: `${isCompressingImage ? 18 : imageUploadProgress}%` }}
+                  />
+                </div>
+                <div className="chat-upload-progress__actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={cancelImageUpload}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form className="chat-input" onSubmit={sendMessage}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={onPickImage}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost chat-input__attach"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={isCompressingImage || uploadingImage || sendingImage}
+                title="Отправить фото"
+              >
+                {isCompressingImage || uploadingImage || sendingImage ? '…' : '📷'}
+              </button>
               <textarea
                 ref={draftInputRef}
                 className="chat-input__textarea"
@@ -1260,7 +1455,7 @@ export default function ChatPage() {
                 className="btn btn-primary chat-input__send"
                 onMouseDown={(e) => e.preventDefault()}
                 onTouchStart={(e) => e.preventDefault()}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || isCompressingImage || uploadingImage || sendingImage}
               >
                 →
               </button>
