@@ -557,6 +557,8 @@ async def chat_websocket(websocket: WebSocket):
                     from app.crud.push import get_subscriptions_for_user
                     from app.services.push import PushPayload, push_service
 
+                    sender_name = user.full_name or user.username
+
                     for member in room.members:
                         if member.user_id != user_id:
                             # WebSocket-уведомление (если онлайн)
@@ -566,6 +568,7 @@ async def chat_websocket(websocket: WebSocket):
                                     "type": "new_message",
                                     "room_id": msg.room_id,
                                     "room_name": room.name or "Чат",
+                                    "sender_full_name": sender_name,
                                     "sender_username": user.username,
                                     "preview": (msg.content or "")[:100],
                                 },
@@ -587,7 +590,7 @@ async def chat_websocket(websocket: WebSocket):
                                             p256dh=sub.p256dh,
                                             auth=sub.auth,
                                             payload=PushPayload(
-                                                title=f"💬 {user.username}",
+                                                title=f"💬 {sender_name}",
                                                 body=(msg.content or "")[:120],
                                                 tag=f"chat-room-{msg.room_id}",
                                                 url=f"/chat?room={msg.room_id}",
@@ -595,6 +598,8 @@ async def chat_websocket(websocket: WebSocket):
                                                     "type": "new_message",
                                                     "room_id": msg.room_id,
                                                     "sender_id": user_id,
+                                                    "sender_full_name": sender_name,
+                                                    "sender_username": user.username,
                                                 },
                                             ),
                                         )

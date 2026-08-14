@@ -105,7 +105,7 @@ async def upload_motorcycle_photo(
     """Возвращает URL сохранённого файла.
 
     Привязку к конкретному мотоциклу делает PATCH ``/motorcycles/{id}``
-    с полем ``photo_url``.
+    с полем ``photos`` (или legacy-полем ``photo_url`` для одного фото).
     """
     url = await save_uploaded_image(file, "motorcycles")
     return ImageUploadResponse(url=url)
@@ -135,7 +135,8 @@ async def upload_and_set_photo(
             detail="Это не ваш мотоцикл",
         )
     url = await save_uploaded_image(file, "motorcycles")
-    moto = await motorcycle_crud.update(
-        db, moto, MotorcycleUpdate(photo_url=url)
-    )
+    new_photos = [*moto.photos]
+    if url not in new_photos:
+        new_photos.append(url)
+    moto = await motorcycle_crud.update(db, moto, MotorcycleUpdate(photos=new_photos))
     return MotorcycleRead.model_validate(moto)

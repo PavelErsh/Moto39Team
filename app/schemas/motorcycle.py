@@ -12,6 +12,7 @@ class MotorcycleBase(BaseModel):
     color: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=2000)
     photo_url: str | None = Field(default=None, max_length=500)
+    photos: list[str] = Field(default_factory=list)
 
 
 class MotorcycleCreate(MotorcycleBase):
@@ -26,6 +27,7 @@ class MotorcycleUpdate(BaseModel):
     color: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=2000)
     photo_url: str | None = Field(default=None, max_length=500)
+    photos: list[str] | None = None
 
 
 class MotorcycleRead(MotorcycleBase):
