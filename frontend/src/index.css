@@ -4201,10 +4201,15 @@ html.low-end .nav-user:hover {
 }
 
 .chat-msg__img {
-  max-width: 240px;
-  max-height: 240px;
+  width: 160px;
+  height: 160px;
+  max-width: min(160px, 100%);
+  max-height: 160px;
   border-radius: var(--radius);
   display: block;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
 }
 
 .chat-composer-layer {
