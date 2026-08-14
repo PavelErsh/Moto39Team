@@ -2135,18 +2135,13 @@ body:has(.home--guest) .site-footer::before {
 
 .calendar-tabs {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 8px;
   padding: 4px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  border-radius: var(--radius-lg);
   align-self: stretch;
-}
-.calendar-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 .calendar-tab {
@@ -2159,16 +2154,16 @@ body:has(.home--guest) .site-footer::before {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 10px 16px;
-  border-radius: 999px;
+  border-radius: 14px;
   cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
+  white-space: normal;
+  display: flex;
   align-items: center;
   gap: 8px;
   transition: background 0.15s ease, color 0.15s ease;
   min-height: 40px;
-  flex: 1 1 auto;
-  justify-content: center;
+  width: 100%;
+  justify-content: space-between;
 }
 .calendar-tab:hover {
   color: var(--ink-soft);
