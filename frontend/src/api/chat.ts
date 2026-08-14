@@ -11,6 +11,7 @@ export interface ChatRoomItem {
   unread_count: number
   member_count: number
   dm_partner_name: string | null
+  dm_partner_avatar_url: string | null
   notifications_enabled: boolean
 }
 

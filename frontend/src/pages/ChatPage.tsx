@@ -20,6 +20,7 @@ import {
   type ReplyMessageItem,
 } from '../api/chat'
 import { apiListUsers, type PublicUser } from '../api/motorcycles'
+import Avatar from '../components/Avatar'
 import { useAuth } from '../context/AuthContext'
 import { tokenStorage } from '../api/client'
 import { linkifyText } from '../utils/linkify'
@@ -849,9 +850,17 @@ export default function ChatPage() {
                       className="chat-room-btn"
                       onClick={() => openRoom(room.id)}
                     >
-                      <div className="chat-room-avatar">
-                        {room.room_type === 'dm' ? '👤' : '👥'}
-                      </div>
+                      {room.room_type === 'dm' ? (
+                        <Avatar
+                          username={room.dm_partner_name || 'user'}
+                          fullName={room.dm_partner_name}
+                          avatarUrl={room.dm_partner_avatar_url}
+                          className="chat-room-avatar"
+                          alt={roomName(room)}
+                        />
+                      ) : (
+                        <div className="chat-room-avatar">👥</div>
+                      )}
                       <div className="chat-room-body">
                         <div className="chat-room-top">
                           <span className="chat-room-name">{roomName(room)}</span>
