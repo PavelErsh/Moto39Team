@@ -761,7 +761,7 @@ export default function ChatPage() {
     reactionLongPressTriggeredRef.current = false
     reactionLongPressTimerRef.current = window.setTimeout(() => {
       reactionLongPressTriggeredRef.current = true
-      setReactionPickerMessageId((prev) => (prev === messageId ? null : messageId))
+      setReactionPickerMessageId(messageId)
       reactionLongPressTimerRef.current = null
     }, 450)
   }, [clearReactionLongPress])
@@ -772,6 +772,10 @@ export default function ChatPage() {
 
   const toggleReactionPicker = useCallback((messageId: number) => {
     setReactionPickerMessageId((prev) => (prev === messageId ? null : messageId))
+  }, [])
+
+  const openReactionPicker = useCallback((messageId: number) => {
+    setReactionPickerMessageId(messageId)
   }, [])
 
   const swallowClickAfterLongPress = useCallback((event: PointerEvent<HTMLDivElement>) => {
@@ -1083,7 +1087,10 @@ export default function ChatPage() {
                       onPointerLeave={cancelReactionLongPress}
                       onContextMenu={(event) => {
                         event.preventDefault()
-                        toggleReactionPicker(msg.id)
+                        if (reactionLongPressTriggeredRef.current) {
+                          return
+                        }
+                        openReactionPicker(msg.id)
                       }}
                       onClick={(event) => {
                         if (!event.altKey) return
