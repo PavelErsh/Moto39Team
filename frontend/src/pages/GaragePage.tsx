@@ -242,16 +242,16 @@ export default function GaragePage() {
 
   /** Загрузка/обновление фото прямо из карточки в списке. */
   async function onCardPhotoChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
     const id = cardUploadingId
-    if (!file || id == null) {
+    if (files.length === 0 || id == null) {
       setCardUploadingId(null)
       return
     }
     setError(null)
     try {
-      await apiUploadMotorcyclePhoto(id, file)
+      await Promise.all(files.map((file) => apiUploadMotorcyclePhoto(id, file)))
       await load()
     } catch (err) {
       setError(extractApiError(err))
@@ -601,6 +601,7 @@ export default function GaragePage() {
         ref={cardPhotoInputRef}
         type="file"
         accept="image/jpeg,image/png,image/gif,image/webp"
+        multiple
         onChange={onCardPhotoChange}
         style={{ display: 'none' }}
       />
