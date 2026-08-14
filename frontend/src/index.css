@@ -3744,6 +3744,15 @@ html.low-end .nav-user:hover {
   gap: 4px;
 }
 
+.chat-room-list-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
 .chat-room-item {
   /* wrapper нужен для hover */
 }
@@ -4360,6 +4369,10 @@ html.low-end .nav-user:hover {
     max-width: none;
     gap: 12px;
     overflow: hidden;
+  }
+
+  .chat-room-list-wrap {
+    flex: 1;
   }
 
   .chat-conversation {

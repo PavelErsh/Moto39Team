@@ -40,6 +40,7 @@ export default function RidersPage() {
   const [users, setUsers] = useState<PublicUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   // Счётчик тиков — заставляет пересчитать `sorted`/лейблы времени,
   // даже если список пользователей не обновлялся с бэкенда.
   const [, setTick] = useState(0)
@@ -114,6 +115,20 @@ export default function RidersPage() {
     return arr
   }, [users])
 
+  const filteredUsers = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) return sorted
+
+    return sorted.filter((user) => {
+      const fullName = (user.full_name ?? '').toLowerCase()
+      const username = user.username.toLowerCase()
+      return (
+        fullName.includes(normalizedQuery) ||
+        username.includes(normalizedQuery)
+      )
+    })
+  }, [query, sorted])
+
   return (
     <section className="riders">
       <header className="garage__head">
@@ -125,14 +140,26 @@ export default function RidersPage() {
         </div>
       </header>
 
+      <div className="references-toolbar">
+        <input
+          type="search"
+          placeholder="Поиск по имени или логину…"
+          className="references-search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
       {error && <div className="alert alert-error">{error}</div>}
       {loading ? (
         <div className="muted">Загрузка…</div>
-      ) : sorted.length === 0 ? (
-        <div className="muted">Пусто</div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="muted">
+          {users.length === 0 ? 'Пусто' : 'Ничего не найдено по вашему запросу'}
+        </div>
       ) : (
         <div className="riders-grid">
-          {sorted.map((u) => {
+          {filteredUsers.map((u) => {
             const initial = (u.username[0] || '?').toUpperCase()
             const lastSeenText = formatLastSeen(u.last_seen_at)
             const isOnline = u.last_seen_at

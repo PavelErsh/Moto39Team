@@ -36,6 +36,17 @@ function fmtTime(iso: string): string {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function fmtDate(iso: string): string {
   const d = new Date(iso)
   const today = new Date()
@@ -829,46 +840,48 @@ export default function ChatPage() {
               <p className="muted">У вас пока нет чатов. Создайте первый!</p>
             </div>
           ) : (
-            <ul className="chat-room-list">
-              {rooms.map((room) => (
-                <li key={room.id} className="chat-room-item">
-                  <button
-                    type="button"
-                    className="chat-room-btn"
-                    onClick={() => openRoom(room.id)}
-                  >
-                    <div className="chat-room-avatar">
-                      {room.room_type === 'dm' ? '👤' : '👥'}
-                    </div>
-                    <div className="chat-room-body">
-                      <div className="chat-room-top">
-                        <span className="chat-room-name">{roomName(room)}</span>
-                        {room.notifications_enabled === false && (
-                          <span className="chat-room-muted-badge">Без звука</span>
-                        )}
-                        {room.last_message && (
-                          <span className="chat-room-time">
-                            {fmtDate(room.last_message.created_at)}
-                          </span>
-                        )}
+            <div className="chat-room-list-wrap">
+              <ul className="chat-room-list">
+                {rooms.map((room) => (
+                  <li key={room.id} className="chat-room-item">
+                    <button
+                      type="button"
+                      className="chat-room-btn"
+                      onClick={() => openRoom(room.id)}
+                    >
+                      <div className="chat-room-avatar">
+                        {room.room_type === 'dm' ? '👤' : '👥'}
                       </div>
-                      <div className="chat-room-bottom">
-                        <span className="chat-room-preview">
-                          {room.last_message
-                            ? room.last_message.content?.slice(0, 80) || '📷 Фото'
-                            : 'Нет сообщений'}
-                        </span>
-                        {unread[room.id] > 0 && (
-                          <span className="chat-room-unread">
-                            {unread[room.id]}
+                      <div className="chat-room-body">
+                        <div className="chat-room-top">
+                          <span className="chat-room-name">{roomName(room)}</span>
+                          {room.notifications_enabled === false && (
+                            <span className="chat-room-muted-badge">Без звука</span>
+                          )}
+                          {room.last_message && (
+                            <span className="chat-room-time">
+                              {fmtDate(room.last_message.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="chat-room-bottom">
+                          <span className="chat-room-preview">
+                            {room.last_message
+                              ? room.last_message.content?.slice(0, 80) || '📷 Фото'
+                              : 'Нет сообщений'}
                           </span>
-                        )}
+                          {unread[room.id] > 0 && (
+                            <span className="chat-room-unread">
+                              {unread[room.id]}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}
@@ -1066,7 +1079,7 @@ export default function ChatPage() {
                             <span> {msg.sender_sponsor_badge}</span>
                           )}
                         </span>
-                        <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
+                        <span className="chat-msg__time">{fmtDateTime(msg.created_at)}</span>
                         <button
                           type="button"
                           className="chat-msg__reply-btn"
