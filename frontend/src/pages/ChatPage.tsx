@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, TouchEvent, UIEvent } from 'react'
+import type { FormEvent, KeyboardEvent, PointerEvent, TouchEvent, UIEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
@@ -122,6 +122,8 @@ export default function ChatPage() {
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const reactionLongPressTimerRef = useRef<number | null>(null)
+  const reactionLongPressTriggeredRef = useRef(false)
   const draftInputRef = useRef<HTMLTextAreaElement>(null)
   const conversationHeadRef = useRef<HTMLElement>(null)
   const lastMessagesScrollTopRef = useRef(0)
@@ -349,6 +351,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     return () => {
+      if (reactionLongPressTimerRef.current !== null) {
+        window.clearTimeout(reactionLongPressTimerRef.current)
+      }
       if (hideHeaderToggleTimerRef.current) {
         clearTimeout(hideHeaderToggleTimerRef.current)
       }
@@ -744,6 +749,38 @@ export default function ChatPage() {
     setReplyToMessage(null)
   }, [])
 
+  const clearReactionLongPress = useCallback(() => {
+    if (reactionLongPressTimerRef.current !== null) {
+      window.clearTimeout(reactionLongPressTimerRef.current)
+      reactionLongPressTimerRef.current = null
+    }
+  }, [])
+
+  const startReactionLongPress = useCallback((messageId: number) => {
+    clearReactionLongPress()
+    reactionLongPressTriggeredRef.current = false
+    reactionLongPressTimerRef.current = window.setTimeout(() => {
+      reactionLongPressTriggeredRef.current = true
+      setReactionPickerMessageId((prev) => (prev === messageId ? null : messageId))
+      reactionLongPressTimerRef.current = null
+    }, 450)
+  }, [clearReactionLongPress])
+
+  const cancelReactionLongPress = useCallback(() => {
+    clearReactionLongPress()
+  }, [clearReactionLongPress])
+
+  const toggleReactionPicker = useCallback((messageId: number) => {
+    setReactionPickerMessageId((prev) => (prev === messageId ? null : messageId))
+  }, [])
+
+  const swallowClickAfterLongPress = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (!reactionLongPressTriggeredRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    reactionLongPressTriggeredRef.current = false
+  }, [])
+
   const toggleReaction = useCallback((messageId: number, emoji: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN || !activeRoomId) return
     wsRef.current.send(JSON.stringify({
@@ -1035,7 +1072,26 @@ export default function ChatPage() {
                         </button>
                       </div>
                     )}
-                    <div className="chat-msg__bubble">
+                    <div
+                      className="chat-msg__bubble"
+                      onPointerDown={(event) => {
+                        if (event.pointerType === 'mouse') return
+                        startReactionLongPress(msg.id)
+                      }}
+                      onPointerUp={cancelReactionLongPress}
+                      onPointerCancel={cancelReactionLongPress}
+                      onPointerLeave={cancelReactionLongPress}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        toggleReactionPicker(msg.id)
+                      }}
+                      onClick={(event) => {
+                        if (!event.altKey) return
+                        event.preventDefault()
+                        toggleReactionPicker(msg.id)
+                      }}
+                      onClickCapture={swallowClickAfterLongPress}
+                    >
                       {msg.reply_to && (
                         <button
                           type="button"
@@ -1081,15 +1137,6 @@ export default function ChatPage() {
                       {msg.is_deleted && (
                         <em className="muted">Сообщение удалено</em>
                       )}
-                      <div className="chat-msg__actions">
-                        <button
-                          type="button"
-                          className="chat-msg__emoji-btn"
-                          onClick={() => setReactionPickerMessageId((prev) => (prev === msg.id ? null : msg.id))}
-                        >
-                          😊
-                        </button>
-                      </div>
                       {reactionPickerMessageId === msg.id && (
                         <div className="chat-msg__reaction-picker">
                           {QUICK_REACTIONS.map((emoji) => (

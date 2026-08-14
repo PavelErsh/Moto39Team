@@ -4163,21 +4163,6 @@ html.low-end .nav-user:hover {
   color: var(--text);
 }
 
-.chat-msg__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.chat-msg__emoji-btn {
-  border: 0;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 4px 8px;
-  cursor: pointer;
-}
-
 .chat-msg__reaction-picker {
   display: flex;
   flex-wrap: wrap;
