@@ -112,6 +112,7 @@ export default function ChatPage() {
   const [memberActionSuccess, setMemberActionSuccess] = useState<string | null>(null)
   const [memberActionBusyId, setMemberActionBusyId] = useState<number | null>(null)
   const [showRoomSettings, setShowRoomSettings] = useState(false)
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null)
   const [isCompressingImage, setIsCompressingImage] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [sendingImage, setSendingImage] = useState(false)
@@ -788,6 +789,16 @@ export default function ChatPage() {
     return room.room_type === 'dm' ? 'Личный чат' : `Беседа #${room.id}`
   }
 
+  const downloadImage = useCallback((url: string, filename = 'chat-image.jpg') => {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [])
+
   const conversationTitle = (room: ChatRoomDetail | null, roomId: number | null) => {
     if (!room || !roomId) return 'Загрузка…'
     if (room.name) return room.name
@@ -1318,7 +1329,23 @@ export default function ChatPage() {
                         </button>
                       )}
                       {msg.message_type === 'image' && msg.image_url ? (
-                        <img src={msg.image_url} alt="" className="chat-msg__img" />
+                        <div className="chat-msg__image-wrap">
+                          <button
+                            type="button"
+                            className="chat-msg__img-btn"
+                            onClick={() => setLightboxImageUrl(msg.image_url!)}
+                            aria-label="Открыть изображение"
+                          >
+                            <img src={msg.image_url} alt="" className="chat-msg__img" />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm chat-msg__download"
+                            onClick={() => downloadImage(msg.image_url!, `chat-image-${msg.id}.jpg`)}
+                          >
+                            ⬇ Скачать
+                          </button>
+                        </div>
                       ) : msg.content ? (
                         <p>{linkifyText(msg.content)}</p>
                       ) : null}
@@ -1517,6 +1544,30 @@ export default function ChatPage() {
               {creating ? 'Создаю…' : 'Создать чат'}
             </button>
           </form>
+        </div>
+      )}
+
+      {lightboxImageUrl && (
+        <div className="lightbox-overlay" onClick={() => setLightboxImageUrl(null)}>
+          <div className="lightbox chat-lightbox" onClick={(e) => e.stopPropagation()}>
+            <img src={lightboxImageUrl} alt="Изображение из чата" className="chat-lightbox__img" />
+            <div className="chat-lightbox__actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => downloadImage(lightboxImageUrl, 'chat-image.jpg')}
+              >
+                ⬇ Скачать
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setLightboxImageUrl(null)}
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

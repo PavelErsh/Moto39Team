@@ -4220,6 +4220,43 @@ html.low-end .nav-user:hover {
   overflow: hidden;
 }
 
+.chat-msg__image-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat-msg__img-btn {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.chat-msg__download {
+  align-self: flex-start;
+}
+
+.chat-lightbox {
+  width: min(100%, 920px);
+}
+
+.chat-lightbox__img {
+  max-width: 100%;
+  max-height: min(78vh, 900px);
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.chat-lightbox__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .chat-composer-layer {
   position: absolute;
   left: 0;
