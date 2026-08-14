@@ -82,6 +82,7 @@ class ChatRoomRead(BaseModel):
     unread_count: int = 0
     member_count: int = 0
     dm_partner_name: str | None = None
+    dm_partner_avatar_url: str | None = None
     notifications_enabled: bool = True
 
     model_config = ConfigDict(from_attributes=True)

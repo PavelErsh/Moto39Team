@@ -88,6 +88,7 @@ def _room_to_read(room: ChatRoom, user_id: int, unread_counts: dict[int, int] | 
         unread_count=unread,
         member_count=len(room.members),
         dm_partner_name=_dm_partner_name(room, user_id),
+        dm_partner_avatar_url=_dm_partner_avatar_url(room, user_id),
         notifications_enabled=current_member.notifications_enabled if current_member else True,
     )
 
@@ -101,6 +102,18 @@ def _dm_partner_name(room: ChatRoom, current_user_id: int) -> str | None:
             if not member.user:
                 return None
             return member.user.full_name or member.user.username
+    return None
+
+
+def _dm_partner_avatar_url(room: ChatRoom, current_user_id: int) -> str | None:
+    """Для DM-комнаты вернуть аватар собеседника."""
+    if room.room_type != "dm":
+        return None
+    for member in room.members:
+        if member.user_id != current_user_id:
+            if not member.user:
+                return None
+            return member.user.avatar_url
     return None
 
 
