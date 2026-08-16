@@ -704,6 +704,52 @@ async def chat_websocket(websocket: WebSocket):
                         personalized.model_dump(mode="json"),
                     )
 
+            elif msg.type == "delete":
+                if not msg.room_id or not msg.message_id:
+                    continue
+                if not await chat_crud.is_member(session, msg.room_id, user_id):
+                    await websocket.send_json(
+                        {"type": "error", "error": "Вы не участник комнаты"}
+                    )
+                    continue
+
+                try:
+                    deleted_message = await chat_crud.delete_room_message(
+                        session,
+                        msg.room_id,
+                        msg.message_id,
+                        user_id,
+                    )
+                except PermissionError:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error": "Можно удалять только свои сообщения",
+                        }
+                    )
+                    continue
+
+                if not deleted_message:
+                    await websocket.send_json(
+                        {"type": "error", "error": "Сообщение не найдено"}
+                    )
+                    continue
+
+                room = await chat_crud.get_room(session, msg.room_id)
+                if not room:
+                    continue
+                for member in room.members:
+                    personalized = WsOutgoing(
+                        type="delete",
+                        room_id=msg.room_id,
+                        message_id=msg.message_id,
+                        message=_message_to_read_for_user(deleted_message, member.user_id),
+                    )
+                    await notify_user(
+                        member.user_id,
+                        personalized.model_dump(mode="json"),
+                    )
+
             elif msg.type == "read":
                 if msg.room_id and msg.message_id:
                     await chat_crud.mark_read(

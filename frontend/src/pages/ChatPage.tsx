@@ -228,6 +228,28 @@ export default function ChatPage() {
               })
             }
           }
+        } else if (data.type === 'delete') {
+          const deletedMessage = data.message as MessageItem | undefined
+          const messageId = data.message_id as number | undefined
+          if (!deletedMessage || !messageId) return
+
+          setMessages((prev) =>
+            prev.map((item) => (item.id === messageId ? deletedMessage : item)),
+          )
+
+          setRooms((prev) =>
+            prev.map((room) =>
+              room.id === deletedMessage.room_id && room.last_message?.id === messageId
+                ? { ...room, last_message: deletedMessage }
+                : room,
+            ),
+          )
+
+          setActiveRoom((prev) =>
+            prev && prev.id === deletedMessage.room_id && prev.last_message?.id === messageId
+              ? { ...prev, last_message: deletedMessage }
+              : prev,
+          )
         } else if (data.type === 'reaction') {
           const message = data.message as MessageItem | undefined
           const messageId = data.message_id as number | undefined
@@ -936,6 +958,26 @@ export default function ChatPage() {
     setReplyToMessage(null)
   }, [])
 
+  const deleteMessage = useCallback((message: MessageItem) => {
+    if (!activeRoomId) return
+    if (message.sender_id !== user?.id) return
+    if (message.is_deleted) return
+    if (!window.confirm('Удалить это сообщение?')) return
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      notify('Не удалось удалить сообщение', {
+        body: 'Нет соединения с сервером',
+        channelId: 'chat',
+      })
+      return
+    }
+
+    wsRef.current.send(JSON.stringify({
+      type: 'delete',
+      room_id: activeRoomId,
+      message_id: message.id,
+    }))
+  }, [activeRoomId, user?.id])
+
   const clearReactionLongPress = useCallback(() => {
     if (reactionLongPressTimerRef.current !== null) {
       window.clearTimeout(reactionLongPressTimerRef.current)
@@ -1365,6 +1407,17 @@ export default function ChatPage() {
                       ) : null}
                       {msg.is_deleted && (
                         <em className="muted">Сообщение удалено</em>
+                      )}
+                      {!msg.is_deleted && msg.sender_id === user?.id && (
+                        <div className="chat-msg__actions">
+                          <button
+                            type="button"
+                            className="chat-msg__delete-btn"
+                            onClick={() => deleteMessage(msg)}
+                          >
+                            Удалить
+                          </button>
+                        </div>
                       )}
                       {reactionPickerMessageId === msg.id && (
                         <div className="chat-msg__reaction-picker">

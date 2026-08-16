@@ -4220,6 +4220,27 @@ html.low-end .nav-user:hover {
   margin-top: 8px;
 }
 
+.chat-msg__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.chat-msg__delete-btn {
+  border: 0;
+  background: transparent;
+  color: #ff8e8e;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.chat-msg__delete-btn:hover,
+.chat-msg__delete-btn:focus-visible {
+  color: #ff6b6b;
+  text-decoration: underline;
+}
+
 .chat-msg__reaction-option,
 .chat-msg__reaction-chip {
   border: 1px solid var(--border-hot);

@@ -405,6 +405,31 @@ async def get_room_message(
     return result.scalar_one_or_none()
 
 
+async def delete_room_message(
+    db: AsyncSession,
+    room_id: int,
+    message_id: int,
+    user_id: int,
+) -> Message | None:
+    """Мягко удалить сообщение, если его удаляет автор."""
+    message = await get_room_message(db, room_id, message_id)
+    if not message:
+        return None
+    if message.sender_id != user_id:
+        raise PermissionError("forbidden")
+    if message.is_deleted:
+        return message
+
+    if message.image_url:
+        delete_uploaded_file_by_url(message.image_url)
+
+    message.content = None
+    message.image_url = None
+    message.is_deleted = True
+    await db.commit()
+    return await get_room_message(db, room_id, message_id)
+
+
 async def toggle_message_reaction(
     db: AsyncSession, room_id: int, message_id: int, user_id: int, emoji: str
 ) -> Message | None:

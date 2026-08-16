@@ -117,7 +117,7 @@ class MemberAddRemove(BaseModel):
 
 class WsIncoming(BaseModel):
     """Входящее WebSocket-сообщение от клиента."""
-    type: str  # "join" | "leave" | "message" | "typing" | "read" | "reaction"
+    type: str  # "join" | "leave" | "message" | "typing" | "read" | "reaction" | "delete"
     room_id: int | None = None
     content: str | None = None
     message_type: str | None = None  # "text" | "image"
@@ -129,7 +129,7 @@ class WsIncoming(BaseModel):
 
 class WsOutgoing(BaseModel):
     """Исходящее WebSocket-сообщение клиенту."""
-    type: str  # "message" | "typing" | "system" | "error" | "read" | "reaction"
+    type: str  # "message" | "typing" | "system" | "error" | "read" | "reaction" | "delete"
     room_id: int | None = None
     message: MessageRead | None = None
     user_id: int | None = None
