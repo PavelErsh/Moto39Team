@@ -20,7 +20,7 @@ import {
 import { tokenStorage } from '../api/client'
 import { apiGetUnread, apiListRooms, type ChatRoomItem, type MessageItem, type UnreadCounts } from '../api/chat'
 import { useAuth } from './AuthContext'
-import { notify } from '../utils/notifications'
+import { clearAppIconBadge, notify, setAppIconBadge } from '../utils/notifications'
 
 // ── Типы ────────────────────────────────────────────────────────
 
@@ -195,6 +195,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       wsRef.current?.close()
     }
   }, [connectWs, refreshRooms, refreshUnread])
+
+  // Синхронизация badge на иконке установленного PWA/приложения.
+  // Когда приложение открыто, всегда выставляем точное количество unread.
+  useEffect(() => {
+    if (!user) {
+      void clearAppIconBadge()
+      return
+    }
+    void setAppIconBadge(unread.total)
+  }, [unread.total, user])
 
   // ── Контекст ─────────────────────────────────────────────────
 

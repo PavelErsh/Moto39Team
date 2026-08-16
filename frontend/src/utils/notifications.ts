@@ -62,6 +62,58 @@ function showWebNotification(title: string, options: NotificationOptions): void 
   }
 }
 
+// ── App icon badge (PWA / поддерживаемые браузеры) ───────────────
+
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>
+  clearAppBadge?: () => Promise<void>
+}
+
+/**
+ * Показать бейдж на иконке установленного приложения/PWA.
+ * Работает только там, где браузер и ОС поддерживают Badging API.
+ */
+export async function setAppIconBadge(count: number): Promise<void> {
+  if (typeof window === 'undefined') return
+  const nav = navigator as BadgeNavigator
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration('/')
+    registration?.active?.postMessage({ type: 'set-badge-count', count })
+    if (typeof nav.setAppBadge === 'function') {
+      if (count > 0) {
+        await nav.setAppBadge(count)
+      } else if (typeof nav.clearAppBadge === 'function') {
+        await nav.clearAppBadge()
+      } else {
+        await nav.setAppBadge(0)
+      }
+    }
+  } catch {
+    /* noop */
+  }
+}
+
+/**
+ * Сбросить бейдж на иконке приложения.
+ */
+export async function clearAppIconBadge(): Promise<void> {
+  if (typeof window === 'undefined') return
+  const nav = navigator as BadgeNavigator
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration('/')
+    registration?.active?.postMessage({ type: 'set-badge-count', count: 0 })
+    if (typeof nav.clearAppBadge === 'function') {
+      await nav.clearAppBadge()
+      return
+    }
+    if (typeof nav.setAppBadge === 'function') {
+      await nav.setAppBadge(0)
+    }
+  } catch {
+    /* noop */
+  }
+}
+
 // ── Публичный API ───────────────────────────────────────────────
 
 export interface NotifyOptions {

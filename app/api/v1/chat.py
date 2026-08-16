@@ -624,6 +624,10 @@ async def chat_websocket(websocket: WebSocket):
                             # push всё равно нужен.
                             if member.notifications_enabled:
                                 try:
+                                    unread_counts = await chat_crud.get_unread_counts(
+                                        session, member.user_id
+                                    )
+                                    total_unread = sum(unread_counts.values())
                                     subs = await get_subscriptions_for_user(
                                         session, member.user_id
                                     )
@@ -635,6 +639,7 @@ async def chat_websocket(websocket: WebSocket):
                                             payload=PushPayload(
                                                 title=f"💬 {sender_name}",
                                                 body=(msg.content or "")[:120],
+                                                badge_count=total_unread,
                                                 tag=f"chat-room-{msg.room_id}",
                                                 url=f"/chat?room={msg.room_id}",
                                                 data={

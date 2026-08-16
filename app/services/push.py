@@ -20,6 +20,7 @@ class PushPayload:
     badge: str = "/icon-192.png"
     tag: str = ""
     url: str = "/"
+    badge_count: int | None = None
     # Дополнительные данные, которые попадут в data уведомления
     data: dict | None = None
 
@@ -110,6 +111,7 @@ class PushService:
                 "body": payload.body,
                 "icon": payload.icon,
                 "badge": payload.badge,
+                "badgeCount": payload.badge_count,
                 "tag": payload.tag,
                 "data": {
                     "url": payload.url,

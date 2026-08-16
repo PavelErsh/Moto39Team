@@ -60,6 +60,42 @@ function idbOpen() {
   })
 }
 
+function idbSet(key, value) {
+  return idbOpen().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite')
+    const store = tx.objectStore(DB_STORE)
+    const req = store.put(value, key)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  }))
+}
+
+async function setStoredBadgeCount(nextCount) {
+  const safeCount = Math.max(0, Number(nextCount) || 0)
+  await idbSet('badgeCount', safeCount)
+  const nav = self.navigator
+  try {
+    if (safeCount > 0 && nav && typeof nav.setAppBadge === 'function') {
+      await nav.setAppBadge(safeCount)
+      return
+    }
+    if (nav && typeof nav.clearAppBadge === 'function') {
+      await nav.clearAppBadge()
+      return
+    }
+    if (nav && typeof nav.setAppBadge === 'function') {
+      await nav.setAppBadge(0)
+    }
+  } catch {
+    // Badging API недоступен/запрещён — просто молча игнорируем.
+  }
+}
+
+async function incrementStoredBadgeCount(delta) {
+  const current = Number(await idbGet('badgeCount')) || 0
+  await setStoredBadgeCount(current + (Number(delta) || 0))
+}
+
 async function idbGet(key) {
   const db = await idbOpen()
   return new Promise((resolve, reject) => {
@@ -217,6 +253,12 @@ self.addEventListener('push', (event) => {
         vibrate: [200, 100, 200],
       }
 
+      if (typeof payload.badgeCount === 'number') {
+        await setStoredBadgeCount(payload.badgeCount)
+      } else {
+        await incrementStoredBadgeCount(1)
+      }
+
       await self.registration.showNotification(title, options)
     })(),
   )
@@ -310,5 +352,8 @@ self.addEventListener('message', (event) => {
   }
   if (data.type === 'skip-waiting') {
     self.skipWaiting()
+  }
+  if (data.type === 'set-badge-count') {
+    event.waitUntil(setStoredBadgeCount(data.count))
   }
 })
