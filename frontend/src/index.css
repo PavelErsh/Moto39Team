@@ -2492,44 +2492,25 @@ body:has(.home--guest) .site-footer::before {
   gap: 10px;
 }
 
-.references-categories__toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.references-categories__toggle:hover,
-.references-categories__toggle.is-open {
-  border-color: var(--border-hot);
-  background: var(--panel-2);
-}
-
-.references-categories__toggle strong {
-  color: var(--accent);
-}
-
-.references-categories__chevron {
-  display: inline-flex;
-  transition: transform 0.15s ease;
-}
-
-.references-categories__toggle.is-open .references-categories__chevron {
-  transform: rotate(180deg);
-}
-
 .references-categories__menu {
   width: 100%;
+}
+
+.references-categories__collapse {
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.references-categories__collapse:hover {
+  border-color: var(--border-hot);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .references-search {

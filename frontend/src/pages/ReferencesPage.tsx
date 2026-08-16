@@ -11,7 +11,7 @@ export default function ReferencesPage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('all')
-  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -85,32 +85,15 @@ export default function ReferencesPage() {
 
       {(categories.length > 0 || activeCategory !== 'all') && (
         <div className="references-categories">
-          <button
-            type="button"
-            className={`references-categories__toggle ${
-              isCategoryMenuOpen ? 'is-open' : ''
-            }`}
-            aria-expanded={isCategoryMenuOpen}
-            aria-controls="references-categories-menu"
-            onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
-          >
-            <span>
-              Категории:{' '}
-              <strong>{activeCategory === 'all' ? 'Все' : activeCategory}</strong>
-            </span>
-            <span className="references-categories__chevron" aria-hidden="true">
-              ▾
-            </span>
-          </button>
-
           <div
             id="references-categories-menu"
             className={`calendar-tabs ${
-              isCategoryMenuOpen ? 'references-categories__menu is-open' : 'references-categories__menu'
+              isCategoryMenuOpen
+                ? 'references-categories__menu is-open'
+                : 'references-categories__menu'
             }`}
             role="tablist"
             aria-label="Категории"
-            hidden={!isCategoryMenuOpen}
           >
             <button
               type="button"
@@ -124,7 +107,8 @@ export default function ReferencesPage() {
               Все
               <span className="calendar-tab__count">{items.length}</span>
             </button>
-            {categories.map((cat) => {
+            {isCategoryMenuOpen &&
+              categories.map((cat) => {
               const count = items.filter((i) => i.category === cat).length
               return (
                 <button
@@ -141,7 +125,15 @@ export default function ReferencesPage() {
                   <span className="calendar-tab__count">{count}</span>
                 </button>
               )
-            })}
+              })}
+            <button
+              type="button"
+              className="references-categories__collapse"
+              aria-expanded={isCategoryMenuOpen}
+              onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
+            >
+              {isCategoryMenuOpen ? 'Свернуть список' : 'Развернуть список'}
+            </button>
           </div>
         </div>
       )}
