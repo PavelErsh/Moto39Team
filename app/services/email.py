@@ -64,6 +64,43 @@ def _build_message(to_email: str, code: str) -> EmailMessage:
     return msg
 
 
+def _build_password_reset_message(to_email: str, code: str) -> EmailMessage:
+    """Собрать письмо с кодом для восстановления пароля."""
+    ttl = settings.EMAIL_CODE_TTL_MINUTES
+    app_name = settings.APP_NAME
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Сброс пароля {app_name}: {code}"
+    msg["From"] = formataddr((settings.SMTP_FROM_NAME, settings.SMTP_FROM_EMAIL))
+    msg["To"] = to_email
+
+    text = (
+        f"Здравствуйте!\n\n"
+        f"Вы запросили сброс пароля в {app_name}.\n"
+        f"Код подтверждения: {code}\n"
+        f"Код действует {ttl} минут.\n\n"
+        f"Если это были не вы, просто проигнорируйте письмо."
+    )
+    msg.set_content(text)
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; color:#222;">
+      <h2 style="margin:0 0 12px;">Восстановление пароля</h2>
+      <p>Вы запросили сброс пароля в <b>{app_name}</b>.</p>
+      <p>Введите этот код в форме восстановления:</p>
+      <p style="font-size:28px; font-weight:bold; letter-spacing:6px;
+               background:#f2f2f2; padding:12px 20px; display:inline-block;
+               border-radius:8px;">
+        {code}
+      </p>
+      <p>Код действует <b>{ttl} минут</b>. Если это были не вы —
+      просто проигнорируйте письмо.</p>
+    </div>
+    """
+    msg.add_alternative(html, subtype="html")
+    return msg
+
+
 async def send_verification_code(to_email: str, code: str) -> None:
     """Отправить письмо с кодом подтверждения.
 
@@ -110,6 +147,55 @@ async def send_verification_code(to_email: str, code: str) -> None:
         if settings.EMAIL_CONSOLE_FALLBACK:
             logger.warning(
                 "[email fallback] SMTP упал. Код для %s: %s",
+                to_email,
+                code,
+            )
+            return
+        raise
+
+
+async def send_password_reset_code(to_email: str, code: str) -> None:
+    """Отправить письмо с кодом сброса пароля."""
+    from_email = settings.SMTP_FROM_EMAIL or settings.SMTP_USERNAME
+    host = settings.SMTP_HOST
+
+    if not host or not from_email:
+        if settings.EMAIL_CONSOLE_FALLBACK:
+            logger.warning(
+                "[email fallback] SMTP не настроен. Код сброса пароля для %s: %s",
+                to_email,
+                code,
+            )
+            return
+        raise RuntimeError(
+            "SMTP не настроен. Задайте SMTP_HOST/SMTP_FROM_EMAIL или "
+            "включите EMAIL_CONSOLE_FALLBACK."
+        )
+
+    message = _build_password_reset_message(to_email, code)
+    if not settings.SMTP_FROM_EMAIL:
+        message.replace_header(
+            "From", formataddr((settings.SMTP_FROM_NAME, from_email))
+        )
+
+    try:
+        await aiosmtplib.send(
+            message,
+            hostname=host,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USERNAME or None,
+            password=settings.SMTP_PASSWORD or None,
+            start_tls=settings.SMTP_USE_STARTTLS,
+            use_tls=settings.SMTP_USE_TLS,
+            timeout=15,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Не удалось отправить письмо сброса пароля на %s", to_email
+        )
+        if settings.EMAIL_CONSOLE_FALLBACK:
+            logger.warning(
+                "[email fallback] SMTP упал. Код сброса для %s: %s",
                 to_email,
                 code,
             )

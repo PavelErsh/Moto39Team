@@ -108,6 +108,16 @@ class UserCRUD:
         await db.refresh(user)
         return user
 
+    async def set_password(
+        self, db: AsyncSession, user: User, password: str
+    ) -> User:
+        """Обновить пароль пользователя отдельным явным методом."""
+        user.hashed_password = hash_password(password)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
     async def update_location(
         self,
         db: AsyncSession,

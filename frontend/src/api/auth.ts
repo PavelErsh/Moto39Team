@@ -47,6 +47,12 @@ export interface RegisterStartResponse {
   expires_in_minutes: number
 }
 
+export interface PasswordResetConfirmPayload {
+  email: string
+  code: string
+  new_password: string
+}
+
 export interface AuthConfig {
   turnstile_enabled: boolean
   turnstile_site_key: string
@@ -114,6 +120,25 @@ export async function apiLogin(
   })
   tokenStorage.set(data.access_token, data.refresh_token)
   return apiMe()
+}
+
+export async function apiForgotPassword(
+  email: string,
+): Promise<RegisterStartResponse> {
+  const res = await api.post<RegisterStartResponse>('/auth/forgot-password', {
+    email,
+  })
+  return res.data
+}
+
+export async function apiResetPassword(
+  payload: PasswordResetConfirmPayload,
+): Promise<{ message: string }> {
+  const res = await api.post<{ message: string }>(
+    '/auth/reset-password',
+    payload,
+  )
+  return res.data
 }
 
 export async function apiMe(): Promise<User> {

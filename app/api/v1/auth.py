@@ -19,16 +19,23 @@ from app.core.security import (
 )
 from app.crud import chat as chat_crud
 from app.crud.email_verification import email_verification_crud
+from app.crud.password_reset import password_reset_crud
 from app.crud.user import user_crud
 from app.schemas.token import RefreshTokenRequest, Token
 from app.schemas.user import (
     EmailVerificationRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RegisterStartResponse,
     ResendCodeRequest,
     UserCreate,
     UserRead,
 )
-from app.services.email import generate_code, send_verification_code
+from app.services.email import (
+    generate_code,
+    send_password_reset_code,
+    send_verification_code,
+)
 from app.services.turnstile import verify_turnstile_token
 
 logger = logging.getLogger(__name__)
@@ -60,6 +67,15 @@ def _normalize_email(email: str) -> str:
 def _normalize_username(username: str) -> str:
     """Единый вид username: strip. Регистр не режем — пусть остаётся."""
     return username.strip()
+
+
+def _generic_reset_response(email: str) -> RegisterStartResponse:
+    """Единый ответ, чтобы не раскрывать существование email в системе."""
+    return RegisterStartResponse(
+        email=email,
+        message="Если пользователь с таким email существует, письмо отправлено",
+        expires_in_minutes=settings.EMAIL_CODE_TTL_MINUTES,
+    )
 
 
 @router.get(
@@ -351,6 +367,84 @@ async def resend_code(
         email=email,
         expires_in_minutes=settings.EMAIL_CODE_TTL_MINUTES,
     )
+
+
+@router.post(
+    "/forgot-password",
+    response_model=RegisterStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Отправить код восстановления пароля на email",
+)
+async def forgot_password(
+    data: PasswordResetRequest, db: DbSession
+) -> RegisterStartResponse:
+    email = _normalize_email(data.email)
+    user = await user_crud.get_by_email(db, email)
+    if user is None:
+        return _generic_reset_response(email)
+
+    existing = await password_reset_crud.get_active_by_email(db, email)
+    if existing is not None:
+        last_sent = _as_utc(existing.last_sent_at)
+        elapsed = (datetime.now(timezone.utc) - last_sent).total_seconds()
+        if elapsed < settings.EMAIL_CODE_RESEND_INTERVAL_SECONDS:
+            return _generic_reset_response(email)
+
+    code = generate_code()
+    if existing is None:
+        await password_reset_crud.create(db, email=email, code=code)
+    else:
+        await password_reset_crud.update_code(db, existing, code=code)
+    await send_password_reset_code(email, code)
+    return _generic_reset_response(email)
+
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_200_OK,
+    summary="Подтвердить код и установить новый пароль",
+)
+async def reset_password(
+    data: PasswordResetConfirmRequest, db: DbSession
+) -> dict[str, str]:
+    email = _normalize_email(data.email)
+    req = await password_reset_crud.get_active_by_email(db, email)
+    if req is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Запрос на восстановление не найден или истёк",
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = _as_utc(req.expires_at)
+    if now > expires_at:
+        await password_reset_crud.delete_by_email(db, email)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Код восстановления истёк. Запросите новый.",
+        )
+
+    if req.code != data.code.strip():
+        req = await password_reset_crud.increment_attempts(db, req)
+        if req.attempts >= settings.EMAIL_CODE_MAX_ATTEMPTS:
+            await password_reset_crud.delete_by_email(db, email)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Слишком много неверных попыток. Запросите новый код.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный код восстановления",
+        )
+
+    user = await user_crud.get_by_email(db, email)
+    if user is None:
+        await password_reset_crud.delete_by_email(db, email)
+        return {"message": "Пароль успешно изменён"}
+
+    await user_crud.set_password(db, user, data.new_password)
+    await password_reset_crud.delete_by_email(db, email)
+    return {"message": "Пароль успешно изменён"}
 
 
 @router.post(

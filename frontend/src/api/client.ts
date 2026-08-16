@@ -124,6 +124,8 @@ const PUBLIC_AUTH_PATHS = [
   '/auth/register',
   '/auth/verify-email',
   '/auth/resend-code',
+  '/auth/forgot-password',
+  '/auth/reset-password',
   '/auth/login',
   '/auth/refresh',
 ]

@@ -222,3 +222,93 @@ async def test_register_normalizes_email_case() -> None:
         )
         # Пре-check ловит совпадение по нормализованному email.
         assert r2.status_code in (400, 409), r2.text
+
+
+@pytest.mark.asyncio
+async def test_password_reset_flow(monkeypatch) -> None:
+    """Запрос кода восстановления → смена пароля → вход новым паролем."""
+    sent: dict[str, str] = {}
+
+    async def _fake_send(to_email: str, code: str) -> None:
+        sent["email"] = to_email
+        sent["code"] = code
+
+    monkeypatch.setattr(auth_module, "send_password_reset_code", _fake_send)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        register_payload = {
+            "email": "reset@example.com",
+            "username": "resetuser",
+            "password": "oldpass123",
+            "full_name": "Reset User",
+        }
+        r_register = await ac.post("/api/v1/auth/register", json=register_payload)
+        assert r_register.status_code == 202, r_register.text
+
+        r_forgot = await ac.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "reset@example.com"},
+        )
+        assert r_forgot.status_code == 202, r_forgot.text
+        assert sent["email"] == "reset@example.com"
+        code = sent["code"]
+
+        r_bad = await ac.post(
+            "/api/v1/auth/reset-password",
+            json={
+                "email": "reset@example.com",
+                "code": "000000",
+                "new_password": "newpass123",
+            },
+        )
+        assert r_bad.status_code == 400
+
+        r_ok = await ac.post(
+            "/api/v1/auth/reset-password",
+            json={
+                "email": "reset@example.com",
+                "code": code,
+                "new_password": "newpass123",
+            },
+        )
+        assert r_ok.status_code == 200, r_ok.text
+
+        r_old_login = await ac.post(
+            "/api/v1/auth/login",
+            data={"username": "resetuser", "password": "oldpass123"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert r_old_login.status_code == 401
+
+        r_new_login = await ac.post(
+            "/api/v1/auth/login",
+            data={"username": "resetuser", "password": "newpass123"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert r_new_login.status_code == 200, r_new_login.text
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_does_not_leak_user_existence(monkeypatch) -> None:
+    """Для отсутствующего email ручка возвращает тот же 202-ответ."""
+
+    async def _fake_send(to_email: str, code: str) -> None:
+        raise AssertionError(f"send should not be called for unknown email {to_email} {code}")
+
+    monkeypatch.setattr(auth_module, "send_password_reset_code", _fake_send)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        r = await ac.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "missing@example.com"},
+        )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["email"] == "missing@example.com"
+        assert "письмо отправлено" in body["message"].lower()

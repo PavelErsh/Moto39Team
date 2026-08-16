@@ -74,6 +74,10 @@ export default function LoginPage() {
       </form>
 
       <p className="muted center">
+        <Link to="/forgot-password">Забыли пароль?</Link>
+      </p>
+
+      <p className="muted center">
         Ещё не с нами? <Link to="/register">Вступить</Link>
       </p>
     </section>

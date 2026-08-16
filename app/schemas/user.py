@@ -32,6 +32,20 @@ class ResendCodeRequest(BaseModel):
     email: EmailStr
 
 
+class PasswordResetRequest(BaseModel):
+    """Запрос на отправку кода сброса пароля."""
+
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Подтверждение сброса пароля кодом из письма."""
+
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=16)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class RegisterStartResponse(BaseModel):
     """Ответ на /auth/register: код отправлен, ждём подтверждения."""
 
