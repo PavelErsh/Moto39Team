@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -18,6 +19,7 @@ from app.core.security import (
     hash_password,
 )
 from app.crud import chat as chat_crud
+from app.crud.auth_refresh_session import auth_refresh_session_crud
 from app.crud.email_verification import email_verification_crud
 from app.crud.password_reset import password_reset_crud
 from app.crud.user import user_crud
@@ -41,6 +43,29 @@ from app.services.turnstile import verify_turnstile_token
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _issue_token_pair(*, db: DbSession, user_id: int) -> Token:
+    """Выдать access+refresh и сохранить refresh-сессию в БД.
+
+    Refresh-токен остаётся JWT, но его ``jti`` дополнительно фиксируется в БД.
+    Благодаря этому:
+      - рестарт API не ломает активные входы;
+      - refresh можно безопасно ротировать и отзывать.
+    """
+    refresh_jti = uuid4().hex
+    refresh_expires_at = auth_refresh_session_crud.build_expiry()
+    refresh_token = create_refresh_token(user_id, jti=refresh_jti)
+    await auth_refresh_session_crud.create(
+        db,
+        user_id=user_id,
+        jti=refresh_jti,
+        expires_at=refresh_expires_at,
+    )
+    return Token(
+        access_token=create_access_token(user_id),
+        refresh_token=refresh_token,
+    )
 
 
 def _client_ip(request: Request) -> str | None:
@@ -314,10 +339,7 @@ async def verify_email(
         )
     await email_verification_crud.delete_by_email(db, draft.email)
 
-    return Token(
-        access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
-    )
+    return await _issue_token_pair(db=db, user_id=user.id)
 
 
 @router.post(
@@ -470,10 +492,7 @@ async def login(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Неактивный пользователь",
         )
-    return Token(
-        access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
-    )
+    return await _issue_token_pair(db=db, user_id=user.id)
 
 
 @router.post(
@@ -491,6 +510,7 @@ async def refresh(payload: RefreshTokenRequest, db: DbSession) -> Token:
         if data.get("type") != "refresh":
             raise credentials_exception
         user_id = int(data["sub"])
+        refresh_jti = str(data["jti"])
     except (JWTError, KeyError, ValueError) as exc:
         raise credentials_exception from exc
 
@@ -498,9 +518,24 @@ async def refresh(payload: RefreshTokenRequest, db: DbSession) -> Token:
     if user is None or not user.is_active:
         raise credentials_exception
 
+    refresh_session = await auth_refresh_session_crud.get_active_by_jti(
+        db, refresh_jti
+    )
+    if refresh_session is None or refresh_session.user_id != user.id:
+        raise credentials_exception
+
+    next_refresh_jti = uuid4().hex
+    next_refresh_expires_at = auth_refresh_session_crud.build_expiry()
+    await auth_refresh_session_crud.rotate(
+        db,
+        current=refresh_session,
+        next_jti=next_refresh_jti,
+        next_expires_at=next_refresh_expires_at,
+    )
+
     return Token(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=create_refresh_token(user.id, jti=next_refresh_jti),
     )
 
 

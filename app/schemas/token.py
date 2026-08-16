@@ -12,6 +12,7 @@ class TokenPayload(BaseModel):
     sub: str | None = None
     exp: int | None = None
     type: str | None = None
+    jti: str | None = None
 
 
 class RefreshTokenRequest(BaseModel):

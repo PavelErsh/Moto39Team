@@ -90,6 +90,58 @@ async def test_register_and_login() -> None:
 
 
 @pytest.mark.asyncio
+async def test_refresh_token_rotation() -> None:
+    """Refresh-токен хранится устойчиво в БД и ротируется при refresh."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as ac:
+        payload = {
+            "email": "refresh@example.com",
+            "username": "refreshuser",
+            "password": "strongpass123",
+            "full_name": "Refresh User",
+        }
+        r_register = await ac.post("/api/v1/auth/register", json=payload)
+        assert r_register.status_code == 202, r_register.text
+
+        r_login = await ac.post(
+            "/api/v1/auth/login",
+            data={"username": "refreshuser", "password": "strongpass123"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert r_login.status_code == 200, r_login.text
+        tokens_1 = r_login.json()
+
+        r_refresh = await ac.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens_1["refresh_token"]},
+        )
+        assert r_refresh.status_code == 200, r_refresh.text
+        tokens_2 = r_refresh.json()
+        assert tokens_2["refresh_token"] != tokens_1["refresh_token"]
+
+        r_me = await ac.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {tokens_2['access_token']}"},
+        )
+        assert r_me.status_code == 200, r_me.text
+        assert r_me.json()["username"] == "refreshuser"
+
+        r_reuse_old = await ac.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens_1["refresh_token"]},
+        )
+        assert r_reuse_old.status_code == 401, r_reuse_old.text
+
+        r_refresh_again = await ac.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens_2["refresh_token"]},
+        )
+        assert r_refresh_again.status_code == 200, r_refresh_again.text
+
+
+@pytest.mark.asyncio
 async def test_email_verification_flow(monkeypatch) -> None:
     """Сценарий с кодом: register → verify-email → login-токены."""
     # Временно включаем email verification и подменяем отправку письма
