@@ -1,4 +1,6 @@
 """Роуты работы с пользователями."""
+import asyncio
+
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentActiveUser, CurrentSuperuser, DbSession
@@ -13,8 +15,54 @@ from app.schemas.user import (
     UserRead,
     UserUpdate,
 )
+from app.services.push import PushPayload, push_service
 
 router = APIRouter()
+
+
+def _build_emergency_push_payload(user, status_value: str) -> PushPayload:
+    display_name = user.full_name or user.username or f"Пользователь #{user.id}"
+    if status_value == "sos":
+        return PushPayload(
+            title="🚨 SOS",
+            body=f"{display_name} попал(а) в серьёзное происшествие.",
+            tag="emergency-sos",
+            url="/map",
+            data={
+                "type": "emergency_status",
+                "status": "sos",
+                "user_id": user.id,
+                "username": user.username,
+            },
+        )
+    if status_value == "help":
+        return PushPayload(
+            title="⚠️ HELP",
+            body=f"{display_name} нуждается в помощи.",
+            tag="emergency-help",
+            url="/map",
+            data={
+                "type": "emergency_status",
+                "status": "help",
+                "user_id": user.id,
+                "username": user.username,
+            },
+        )
+    return PushPayload(
+        title="🏍️ Я катаю",
+        body=(
+            f"{display_name} катается, вы можете присоединиться "
+            "и прокатиться вместе."
+        ),
+        tag="emergency-riding",
+        url="/map",
+        data={
+            "type": "emergency_status",
+            "status": "riding",
+            "user_id": user.id,
+            "username": user.username,
+        },
+    )
 
 
 def _to_location(user) -> UserLocation:
@@ -172,6 +220,10 @@ async def update_emergency_status(
     # Пустая строка означает сброс статуса — приводим к None.
     status = data.emergency_status.strip() if data.emergency_status else None
     user = await user_crud.update_emergency_status(db, current_user, status)
+    if status in {"help", "sos", "riding"}:
+        asyncio.create_task(
+            push_service.broadcast(_build_emergency_push_payload(user, status))
+        )
     return _to_location(user)
 
 

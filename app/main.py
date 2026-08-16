@@ -1,4 +1,5 @@
 """Точка входа FastAPI-приложения (чистый REST API для React-фронтенда)."""
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,8 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.config import settings
 from app.crud import chat as chat_crud
-from app.db.session import AsyncSessionLocal
 from app.db import base_all  # noqa: F401  # регистрирует все модели
+from app.db.session import AsyncSessionLocal
+from app.services.event_reminders import reminders_loop
 from app.services.ws_manager import close_redis, init_redis
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация и очистка ресурсов при старте/остановке приложения."""
+    reminder_task: asyncio.Task | None = None
     try:
         async with AsyncSessionLocal() as db:
             await chat_crud.purge_expired_chat_images(db, force=True, min_interval_seconds=0)
@@ -32,8 +35,20 @@ async def lifespan(app: FastAPI):
         logger.info("Redis Pub/Sub initialized")
     except Exception:
         logger.warning("Redis not available — chat will use in-process messaging")
+
+    try:
+        reminder_task = asyncio.create_task(reminders_loop())
+        logger.info("Event reminders loop started")
+    except Exception:
+        logger.exception("Failed to start event reminders loop")
     yield
     # Очистка
+    if reminder_task:
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
     try:
         await close_redis()
     except Exception:

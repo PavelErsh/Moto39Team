@@ -1,4 +1,5 @@
 """Сервис отправки Web Push-уведомлений через pywebpush."""
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -6,6 +7,8 @@ from dataclasses import dataclass
 from pywebpush import WebPushException, webpush
 
 from app.core.config import settings
+from app.crud.push import get_all_subscriptions, remove_subscription
+from app.db.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +59,10 @@ class PushService:
         if not self._vapid_private_key:
             return ""
         try:
+            from base64 import urlsafe_b64decode, urlsafe_b64encode
+
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.primitives.asymmetric import ec
-            from base64 import urlsafe_b64encode
-
-            from base64 import urlsafe_b64decode
 
             # Ключ хранится в формате URL-safe base64(DER).
             # Именно так его генерируют deploy/*.sh скрипты.
@@ -156,6 +158,43 @@ class PushService:
         except Exception:
             logger.exception("Unexpected push error for %s", endpoint[:80])
             return False
+
+    async def broadcast(self, payload: PushPayload) -> None:
+        """Разослать push-уведомление всем сохранённым подпискам.
+
+        Используется для общих событий приложения, например сигналов
+        "help" / "sos" / "я катаю" с домашнего экрана.
+        Ошибки отдельных подписок не прерывают рассылку остальным.
+        """
+        if not self._enabled:
+            logger.debug("Push broadcast skipped: no VAPID_PRIVATE_KEY configured")
+            return
+
+        async with AsyncSessionLocal() as db:
+            subs = await get_all_subscriptions(db)
+            if not subs:
+                return
+
+            async def _send_one(sub) -> None:
+                try:
+                    await self.send(
+                        endpoint=sub.endpoint,
+                        p256dh=sub.p256dh,
+                        auth=sub.auth,
+                        payload=payload,
+                    )
+                except WebPushException as exc:
+                    response = getattr(exc, "response", None)
+                    status = getattr(response, "status_code", 0)
+                    if status in (404, 410):
+                        await remove_subscription(db, sub.endpoint)
+                except Exception:
+                    logger.exception(
+                        "Unexpected push broadcast error for %s",
+                        sub.endpoint[:80],
+                    )
+
+            await asyncio.gather(*[_send_one(sub) for sub in subs], return_exceptions=True)
 
 
 # Глобальный экземпляр сервиса
