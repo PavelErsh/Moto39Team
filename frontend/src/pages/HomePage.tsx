@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useChatContext } from '../context/ChatContext'
 import { apiUpdateEmergencyStatus } from '../api/motorcycles'
 
 /**
@@ -120,10 +121,12 @@ const HITS: Record<string, Hit> = {
 
 export default function HomePage() {
   const { user, logout, refreshUser } = useAuth()
+  const { unread } = useChatContext()
   const navigate = useNavigate()
 
   // Состояние диалога подтверждения SOS/HELP
   const [confirmModal, setConfirmModal] = useState<'sos' | 'help' | null>(null)
+  const hasUnreadChat = unread.total > 0
 
 
   // Гостевая версия — экран приветствия с приглашением войти/вступить.
@@ -482,6 +485,13 @@ export default function HomePage() {
         />
 
         {/* Байкчат — раздел в разработке */}
+        {hasUnreadChat && (
+          <span
+            className="pager-chat-unread-dot"
+            style={{ top: '74.2%', left: '71.5%' }}
+            aria-hidden="true"
+          />
+        )}
         <Link
           to="/chat"
           aria-label={HITS.baik.label}
