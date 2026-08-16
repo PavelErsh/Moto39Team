@@ -223,11 +223,6 @@ export default function CalendarPage() {
                         <dd>{ev.organizer}</dd>
                       </div>
                     </dl>
-                    {ev.images.length > 0 && (
-                      <div className="event-card__badge">
-                        📷 {ev.images.length}
-                      </div>
-                    )}
                   </div>
                 </Link>
               </li>
