@@ -11,6 +11,7 @@ export default function ReferencesPage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('all')
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,6 +52,11 @@ export default function ReferencesPage() {
     })
   }, [items, query, activeCategory])
 
+  const handleCategorySelect = useCallback((category: string) => {
+    setActiveCategory(category)
+    setIsCategoryMenuOpen(false)
+  }, [])
+
   return (
     <section className="references-page">
       <header className="references-page__head">
@@ -78,37 +84,65 @@ export default function ReferencesPage() {
       </div>
 
       {(categories.length > 0 || activeCategory !== 'all') && (
-        <div className="calendar-tabs" role="tablist" aria-label="Категории">
+        <div className="references-categories">
           <button
             type="button"
-            role="tab"
-            aria-selected={activeCategory === 'all'}
-            className={`calendar-tab ${
-              activeCategory === 'all' ? 'is-active' : ''
+            className={`references-categories__toggle ${
+              isCategoryMenuOpen ? 'is-open' : ''
             }`}
-            onClick={() => setActiveCategory('all')}
+            aria-expanded={isCategoryMenuOpen}
+            aria-controls="references-categories-menu"
+            onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
           >
-            Все
-            <span className="calendar-tab__count">{items.length}</span>
+            <span>
+              Категории:{' '}
+              <strong>{activeCategory === 'all' ? 'Все' : activeCategory}</strong>
+            </span>
+            <span className="references-categories__chevron" aria-hidden="true">
+              ▾
+            </span>
           </button>
-          {categories.map((cat) => {
-            const count = items.filter((i) => i.category === cat).length
-            return (
-              <button
-                key={cat}
-                type="button"
-                role="tab"
-                aria-selected={activeCategory === cat}
-                className={`calendar-tab ${
-                  activeCategory === cat ? 'is-active' : ''
-                }`}
-                onClick={() => setActiveCategory(cat)}
-              >
-                {cat}
-                <span className="calendar-tab__count">{count}</span>
-              </button>
-            )
-          })}
+
+          <div
+            id="references-categories-menu"
+            className={`calendar-tabs ${
+              isCategoryMenuOpen ? 'references-categories__menu is-open' : 'references-categories__menu'
+            }`}
+            role="tablist"
+            aria-label="Категории"
+            hidden={!isCategoryMenuOpen}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === 'all'}
+              className={`calendar-tab ${
+                activeCategory === 'all' ? 'is-active' : ''
+              }`}
+              onClick={() => handleCategorySelect('all')}
+            >
+              Все
+              <span className="calendar-tab__count">{items.length}</span>
+            </button>
+            {categories.map((cat) => {
+              const count = items.filter((i) => i.category === cat).length
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeCategory === cat}
+                  className={`calendar-tab ${
+                    activeCategory === cat ? 'is-active' : ''
+                  }`}
+                  onClick={() => handleCategorySelect(cat)}
+                >
+                  {cat}
+                  <span className="calendar-tab__count">{count}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 

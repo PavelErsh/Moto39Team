@@ -2486,6 +2486,52 @@ body:has(.home--guest) .site-footer::before {
   align-items: center;
 }
 
+.references-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.references-categories__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.references-categories__toggle:hover,
+.references-categories__toggle.is-open {
+  border-color: var(--border-hot);
+  background: var(--panel-2);
+}
+
+.references-categories__toggle strong {
+  color: var(--accent);
+}
+
+.references-categories__chevron {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+
+.references-categories__toggle.is-open .references-categories__chevron {
+  transform: rotate(180deg);
+}
+
+.references-categories__menu {
+  width: 100%;
+}
+
 .references-search {
   flex: 1;
   min-width: 0;
@@ -3998,6 +4044,17 @@ html.low-end .nav-user:hover {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-soft);
+}
+
+.chat-msg__sender-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.chat-msg__sender-link:hover,
+.chat-msg__sender-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .chat-msg__time {

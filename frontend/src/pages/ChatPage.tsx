@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, PointerEvent, TouchEvent, UIEvent } from 'react'
 import axios from 'axios'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { extractApiError } from '../api/client'
 import {
   apiAddMembers,
@@ -85,6 +85,11 @@ function toReplyMessageItem(message: MessageItem): ReplyMessageItem {
     image_url: message.image_url,
     is_deleted: message.is_deleted,
   }
+}
+
+function getUserProfileHref(username: string | null | undefined): string | null {
+  if (!username) return null
+  return `/u/${encodeURIComponent(username)}`
 }
 
 // ── Компонент ───────────────────────────────────────────────────
@@ -1253,7 +1258,16 @@ export default function ChatPage() {
                     {showHeader && (
                       <div className="chat-msg__header">
                         <span className="chat-msg__sender">
-                          {msg.sender_full_name || msg.sender_username || '?'}
+                          {getUserProfileHref(msg.sender_username) ? (
+                            <Link
+                              to={getUserProfileHref(msg.sender_username)!}
+                              className="chat-msg__sender-link"
+                            >
+                              {msg.sender_full_name || msg.sender_username || '?'}
+                            </Link>
+                          ) : (
+                            <span>{msg.sender_full_name || msg.sender_username || '?'}</span>
+                          )}
                           {msg.sender_sponsor_badge && (
                             <span> {msg.sender_sponsor_badge}</span>
                           )}
