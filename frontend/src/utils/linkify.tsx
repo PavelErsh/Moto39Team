@@ -5,7 +5,7 @@ import React from 'react'
  *
  * Захватывает:
  *   • URL со схемой:  http://…, https://…
- *   • URL без схемы:  www.example.com
+ *   • URL без схемы:  www.example.com, vk.ru/club123
  *   • Email-адреса:   user@example.com
  *   • Телефоны:       +7 (999) 123-45-67, 8-999-123-45-67, +7 999 1234567 и т.п.
  *
@@ -13,7 +13,7 @@ import React from 'react'
  */
 const URL_REGEX =
   // eslint-disable-next-line no-useless-escape
-  /(?<url>(?:https?:\/\/|www\.)[^\s<>()"']+[^\s<>()"'.,;:!?])|(?<email>[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})|(?<phone>(?:\+7|8)[\s\-.()]*\d{3}[\s\-.()]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}|\+\d{1,3}[\s\-.()]*(?:\d[\s\-.()]*){7,13}\d)/g
+  /(?<url>(?:https?:\/\/|www\.|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\/)[^\s<>()"']+[^\s<>()"'.,;:!?])|(?<email>[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})|(?<phone>(?:\+7|8)[\s\-.()]*\d{3}[\s\-.()]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}|\+\d{1,3}[\s\-.()]*(?:\d[\s\-.()]*){7,13}\d)/g
 
 /**
  * Нормализует телефон для использования в href="tel:…".
@@ -35,7 +35,7 @@ function normalizePhone(raw: string): string {
  * (URL, email, телефон) в кликабельные `<a>` элементы.
  *
  * • http/https-ссылки открываются как есть в новой вкладке.
- * • Ссылки, начинающиеся с `www.`, автоматически получают префикс `https://`.
+ * • Ссылки без схемы (`www.` или `vk.ru/...`) автоматически получают префикс `https://`.
  * • Email превращается в `mailto:`-ссылку.
  * • Телефон превращается в `tel:`-ссылку — по клику мобильное устройство
  *   инициирует звонок.
@@ -66,7 +66,7 @@ export function linkifyText(text: string): React.ReactNode[] {
       href = `mailto:${raw}`
     } else if (isPhone) {
       href = `tel:${normalizePhone(raw)}`
-    } else if (/^www\./i.test(raw)) {
+    } else if (!/^https?:\/\//i.test(raw)) {
       href = `https://${raw}`
       external = true
     } else {
