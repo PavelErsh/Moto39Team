@@ -4220,25 +4220,21 @@ html.low-end .nav-user:hover {
   margin-top: 8px;
 }
 
-.chat-msg__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
 .chat-msg__delete-btn {
-  border: 0;
-  background: transparent;
-  color: #ff8e8e;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff9b9b;
+  border-radius: 999px;
   cursor: pointer;
   font-size: 12px;
-  padding: 2px 0;
+  padding: 4px 10px;
 }
 
 .chat-msg__delete-btn:hover,
 .chat-msg__delete-btn:focus-visible {
   color: #ff6b6b;
-  text-decoration: underline;
+  border-color: rgba(255, 107, 107, 0.75);
+  background: rgba(255, 107, 107, 0.16);
 }
 
 .chat-msg__reaction-option,

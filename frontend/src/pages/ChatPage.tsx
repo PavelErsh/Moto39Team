@@ -1408,17 +1408,6 @@ export default function ChatPage() {
                       {msg.is_deleted && (
                         <em className="muted">Сообщение удалено</em>
                       )}
-                      {!msg.is_deleted && msg.sender_id === user?.id && (
-                        <div className="chat-msg__actions">
-                          <button
-                            type="button"
-                            className="chat-msg__delete-btn"
-                            onClick={() => deleteMessage(msg)}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      )}
                       {reactionPickerMessageId === msg.id && (
                         <div className="chat-msg__reaction-picker">
                           {QUICK_REACTIONS.map((emoji) => (
@@ -1431,6 +1420,18 @@ export default function ChatPage() {
                               {emoji}
                             </button>
                           ))}
+                          {!msg.is_deleted && msg.sender_id === user?.id && (
+                            <button
+                              type="button"
+                              className="chat-msg__delete-btn"
+                              onClick={() => {
+                                setReactionPickerMessageId(null)
+                                deleteMessage(msg)
+                              }}
+                            >
+                              Удалить
+                            </button>
+                          )}
                         </div>
                       )}
                       {msg.reactions.length > 0 && (
