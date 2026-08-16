@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type TouchEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { apiCreateRoom } from '../api/chat'
 import { extractApiError } from '../api/client'
 import { apiGetPublicUser, type PublicUser } from '../api/motorcycles'
 import RiderLocationMap from '../components/RiderLocationMap'
+import { useAuth } from '../context/AuthContext'
 
 function getMotorcyclePhotos(m: {
   photo_url: string | null
@@ -41,6 +43,8 @@ const TICK_INTERVAL_MS = 30_000
 
 export default function UserProfilePage() {
   const { username } = useParams<{ username: string }>()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +57,7 @@ export default function UserProfilePage() {
     title: string
   } | null>(null)
   const touchStartXRef = useRef<number | null>(null)
+  const startingDmRef = useRef(false)
 
   useEffect(() => {
     if (!username) return
@@ -123,6 +128,22 @@ export default function UserProfilePage() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [lightbox])
+
+  const startDm = useCallback(async () => {
+    if (!profile || startingDmRef.current) return
+    startingDmRef.current = true
+    try {
+      const room = await apiCreateRoom({
+        room_type: 'dm',
+        member_ids: [profile.id],
+      })
+      navigate(`/chat?room=${room.id}`)
+    } catch {
+      navigate('/chat')
+    } finally {
+      startingDmRef.current = false
+    }
+  }, [navigate, profile])
 
   if (loading) return <div className="muted">Загрузка…</div>
   if (error) return <div className="alert alert-error">{error}</div>
@@ -208,6 +229,8 @@ export default function UserProfilePage() {
     else showPrevLightboxPhoto()
   }
 
+  const isOwnProfile = !!user && !!profile && user.username === profile.username
+
   return (
     <section className="cabinet">
       <header className="cabinet__head">
@@ -237,6 +260,18 @@ export default function UserProfilePage() {
             </p>
           )}
         </div>
+        {!isOwnProfile && (
+          <div className="cabinet__actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => void startDm()}
+              title="Написать в личные сообщения"
+            >
+              💬 Личный чат
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="rider-profile__map-block">
