@@ -29,7 +29,8 @@
  * есть нативная сборка Capacitor (см. src/services/backgroundLocation.ts).
  */
 
-const CACHE_VERSION = 'moto39-v2'
+const CACHE_VERSION = 'moto39-v3'
+const FONT_CACHE = 'moto39-fonts-v1'
 const DB_NAME = 'moto39-bg'
 const DB_STORE = 'kv'
 
@@ -43,6 +44,8 @@ const PRECACHE_URLS = [
   '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',
+  '/logo.jpeg',
+  '/pager.jpeg',
 ]
 
 // -----------------------------------------------------------------------------
@@ -132,8 +135,9 @@ self.addEventListener('activate', (event) => {
     (async () => {
       // Чистим кэши старых версий.
       const keys = await caches.keys()
+      const keep = new Set([CACHE_VERSION, FONT_CACHE])
       await Promise.all(
-        keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)),
+        keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)),
       )
       await self.clients.claim()
     })(),
@@ -176,6 +180,33 @@ self.addEventListener('fetch', (event) => {
   } catch {
     return
   }
+  // Google Fonts — stale-while-revalidate в отдельном долговременном
+  // кэше. На слабых устройствах шрифты — один из самых заметных
+  // источников «долгой загрузки»: пока они летят, текст либо мигает,
+  // либо блокирует layout. Кладём их в кэш один раз — и дальше
+  // приложение открывается офлайн-моментально.
+  if (
+    url.host === 'fonts.googleapis.com' ||
+    url.host === 'fonts.gstatic.com'
+  ) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(FONT_CACHE)
+        const cached = await cache.match(request)
+        const network = fetch(request)
+          .then((resp) => {
+            if (resp && (resp.status === 200 || resp.type === 'opaque')) {
+              cache.put(request, resp.clone()).catch(() => {})
+            }
+            return resp
+          })
+          .catch(() => null)
+        return cached || (await network) || new Response('', { status: 504 })
+      })(),
+    )
+    return
+  }
+
   if (url.origin !== self.location.origin) return
   if (isApiRequest(url)) return
 

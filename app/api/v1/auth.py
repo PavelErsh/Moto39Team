@@ -524,18 +524,20 @@ async def refresh(payload: RefreshTokenRequest, db: DbSession) -> Token:
     if refresh_session is None or refresh_session.user_id != user.id:
         raise credentials_exception
 
-    next_refresh_jti = uuid4().hex
+    # Не ротируем jti: при параллельных запросах (несколько вкладок,
+    # service worker, background-геолокация) второй refresh не найдёт
+    # уже «проротированный» jti и уронит пользователя в logout. Просто
+    # продлеваем срок жизни существующей сессии — «sliding expiration».
     next_refresh_expires_at = auth_refresh_session_crud.build_expiry()
-    await auth_refresh_session_crud.rotate(
+    await auth_refresh_session_crud.touch(
         db,
         current=refresh_session,
-        next_jti=next_refresh_jti,
         next_expires_at=next_refresh_expires_at,
     )
 
     return Token(
         access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id, jti=next_refresh_jti),
+        refresh_token=payload.refresh_token,
     )
 
 

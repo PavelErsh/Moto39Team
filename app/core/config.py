@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     # Держим access-токен 7 дней, чтобы пользователь не вылетал слишком часто.
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Refresh-токен живёт долго и «скользит»: при каждом /auth/refresh
+    # мы продлеваем срок жизни существующей сессии. Пока пользователь
+    # хоть иногда открывает приложение — его не выкидывает.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 60
 
     # CORS: список разрешённых origin через запятую или '*' — разрешить все.
     #

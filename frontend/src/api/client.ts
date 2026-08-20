@@ -165,8 +165,17 @@ async function refreshTokens(): Promise<string | null> {
     })
     tokenStorage.set(data.access_token, data.refresh_token)
     return data.access_token as string
-  } catch {
-    tokenStorage.clear()
+  } catch (err) {
+    // Токены сбрасываем ТОЛЬКО когда сервер явно сказал «refresh невалиден»
+    // (401/403). При сетевой ошибке, 5xx или таймауте оставляем токены на
+    // месте — иначе кратковременный обрыв связи (метро, лифт, спящий Wi-Fi)
+    // выкидывает пользователя из сессии.
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status
+      if (status === 401 || status === 403 || status === 422) {
+        tokenStorage.clear()
+      }
+    }
     return null
   }
 }
@@ -186,9 +195,16 @@ api.interceptors.response.use(
       !isPublicAuthPath(original.url)
     ) {
       original._retry = true
-      refreshingPromise = refreshingPromise ?? refreshTokens()
+      if (!refreshingPromise) {
+        refreshingPromise = refreshTokens().finally(() => {
+          // Сбрасываем ТОЛЬКО когда обещание фактически разрешилось,
+          // чтобы все параллельные 401-запросы дождались одного и того
+          // же refresh, а не запускали свой (и не «съедали» друг у друга
+          // refresh-токен).
+          refreshingPromise = null
+        })
+      }
       const newToken = await refreshingPromise
-      refreshingPromise = null
       if (newToken) {
         original.headers = original.headers ?? {}
         ;(original.headers as Record<string, string>).Authorization =

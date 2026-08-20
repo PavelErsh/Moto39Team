@@ -59,9 +59,42 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+// Ключ, под которым храним last-known-good профиль пользователя.
+// Нужен, чтобы при повторном открытии приложения мгновенно отрисовать
+// UI без ожидания сетевого apiMe() — свежий профиль всё равно догрузится
+// в фоне и, если что-то изменилось, обновит state.
+const USER_CACHE_KEY = 'moto39_user_cache'
+
+function readCachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as User
+  } catch {
+    return null
+  }
+}
+
+function writeCachedUser(u: User | null): void {
+  try {
+    if (u) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u))
+    else localStorage.removeItem(USER_CACHE_KEY)
+  } catch {
+    /* noop */
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Синхронно гидратируем пользователя из localStorage: если валидный
+  // access-token уже есть, UI не должен «висеть» на splash-спиннере,
+  // пока летит фоновый apiMe(). Если токена нет — считаем, что не
+  // залогинен, и сразу снимаем loading.
+  const initialUser =
+    typeof window !== 'undefined' && tokenStorage.getAccess()
+      ? readCachedUser()
+      : null
+  const [user, setUser] = useState<User | null>(initialUser)
+  const [loading, setLoading] = useState(initialUser === null)
   // Актуальная «эпоха» токенов, к которой относится состояние `user`.
   // Любой асинхронный запрос профиля запоминает эпоху ДО старта и
   // применяет результат, только если она не менялась с тех пор.
@@ -83,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       epochRef.current = expectedEpoch
       setUser(next)
+      writeCachedUser(next)
     },
     [],
   )
@@ -104,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // После clear() эпоха сдвинулась — но нам как раз нужно
         // безусловно занулить пользователя.
         setUser(null)
+        writeCachedUser(null)
       }
     }
   }, [applyUser])
@@ -174,23 +209,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void stopBackgroundLocation()
     apiLogout()
     setUser(null)
+    writeCachedUser(null)
   }, [])
 
   const updateProfile = useCallback(async (data: UpdateUserPayload) => {
     const me = await apiUpdateMe(data)
     setUser(me)
+    writeCachedUser(me)
     return me
   }, [])
 
   const uploadAvatar = useCallback(async (file: File) => {
     const me = await apiUploadAvatar(file)
     setUser(me)
+    writeCachedUser(me)
     return me
   }, [])
 
   const deleteAvatar = useCallback(async () => {
     const me = await apiDeleteAvatar()
     setUser(me)
+    writeCachedUser(me)
     return me
   }, [])
 

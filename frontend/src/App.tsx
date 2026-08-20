@@ -51,10 +51,25 @@ export default function App() {
   useTwemoji()
   usePushSubscription()
 
-  // Запрашиваем разрешение на уведомления при первом входе
+  // Запрашиваем разрешение на уведомления при первом входе.
+  // Делаем это в idle-таймслоте, чтобы регистрация SW и вопрос о
+  // разрешениях не конкурировали с первым рендером и не тормозили
+  // открытие приложения на слабых устройствах.
   useEffect(() => {
-    ensurePushServiceWorker().catch(() => {})
-    requestNotificationPermissions()
+    const run = () => {
+      ensurePushServiceWorker().catch(() => {})
+      requestNotificationPermissions()
+    }
+    const ric = (
+      window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+      }
+    ).requestIdleCallback
+    if (typeof ric === 'function') {
+      ric(run, { timeout: 3000 })
+    } else {
+      setTimeout(run, 1500)
+    }
   }, [])
 
   if (loading) {

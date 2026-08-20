@@ -184,8 +184,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // ── Подписка на изменения токена ─────────────────────────────
 
-  // При логине/логауте токен меняется — переподключаем WebSocket
+  // При логине/логауте токен меняется — переподключаем WebSocket.
+  // Пока пользователь не авторизован, никакой чат-инфраструктуры не
+  // поднимаем: это экономит время старта приложения и убирает лишние
+  // запросы к бэкенду на страницах логина/регистрации.
   useEffect(() => {
+    if (!user) {
+      setLoadingRooms(false)
+      return
+    }
     connectWs()
     refreshRooms()
     refreshUnread()
@@ -193,8 +200,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
+      wsRef.current = null
     }
-  }, [connectWs, refreshRooms, refreshUnread])
+  }, [user, connectWs, refreshRooms, refreshUnread])
 
   // Синхронизация badge на иконке установленного PWA/приложения.
   // Когда приложение открыто, всегда выставляем точное количество unread.

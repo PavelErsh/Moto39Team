@@ -52,17 +52,32 @@ class AuthRefreshSessionCRUD:
         next_jti: str,
         next_expires_at: datetime,
     ) -> AuthRefreshSession:
-        await db.delete(current)
-        replacement = AuthRefreshSession(
-            user_id=current.user_id,
-            jti=next_jti,
-            expires_at=next_expires_at,
-            rotated_at=datetime.now(UTC),
+        """Совместимость: см. ``touch``.
+
+        Раньше при каждом /auth/refresh мы удаляли старую сессию и создавали
+        новую с другим ``jti``. Это плохо работает при параллельных запросах
+        (несколько вкладок, Service Worker, background-геолокация): второй
+        параллельный refresh уже не находит старый jti в БД и получает 401 —
+        пользователя выкидывает. Оставляем сессию с тем же ``jti``, просто
+        продлеваем её срок жизни.
+        """
+        return await self.touch(
+            db, current=current, next_expires_at=next_expires_at
         )
-        db.add(replacement)
+
+    async def touch(
+        self,
+        db: AsyncSession,
+        *,
+        current: AuthRefreshSession,
+        next_expires_at: datetime,
+    ) -> AuthRefreshSession:
+        """Продлить срок жизни существующей refresh-сессии."""
+        current.expires_at = next_expires_at
+        current.rotated_at = datetime.now(UTC)
         await db.commit()
-        await db.refresh(replacement)
-        return replacement
+        await db.refresh(current)
+        return current
 
     async def revoke_all_for_user(self, db: AsyncSession, user_id: int) -> None:
         await db.execute(

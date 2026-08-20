@@ -91,7 +91,15 @@ async def test_register_and_login() -> None:
 
 @pytest.mark.asyncio
 async def test_refresh_token_rotation() -> None:
-    """Refresh-токен хранится устойчиво в БД и ротируется при refresh."""
+    """Refresh-сессия «скользит»: тот же refresh-токен остаётся валиден.
+
+    Раньше при каждом /auth/refresh мы ротировали jti и инвалидировали
+    старый refresh. Это ломало параллельные запросы (несколько вкладок,
+    service worker, background-геолокация): один запрос уже проротировал
+    сессию, второй с тем же (ещё вчера валидным) refresh получал 401 и
+    выкидывал пользователя. Теперь /auth/refresh возвращает новый access
+    и оставляет refresh прежним, продлевая срок жизни сессии.
+    """
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test"
@@ -119,7 +127,10 @@ async def test_refresh_token_rotation() -> None:
         )
         assert r_refresh.status_code == 200, r_refresh.text
         tokens_2 = r_refresh.json()
-        assert tokens_2["refresh_token"] != tokens_1["refresh_token"]
+        # Refresh не ротируется — это осознанное поведение (см. docstring).
+        assert tokens_2["refresh_token"] == tokens_1["refresh_token"]
+        # Access-токен обязан быть свежим.
+        assert tokens_2["access_token"]
 
         r_me = await ac.get(
             "/api/v1/auth/me",
@@ -128,11 +139,13 @@ async def test_refresh_token_rotation() -> None:
         assert r_me.status_code == 200, r_me.text
         assert r_me.json()["username"] == "refreshuser"
 
-        r_reuse_old = await ac.post(
+        # Старый refresh должен и дальше работать — иначе параллельные
+        # запросы (SW/вкладки) снова начнут выкидывать пользователя.
+        r_reuse = await ac.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": tokens_1["refresh_token"]},
         )
-        assert r_reuse_old.status_code == 401, r_reuse_old.text
+        assert r_reuse.status_code == 200, r_reuse.text
 
         r_refresh_again = await ac.post(
             "/api/v1/auth/refresh",
