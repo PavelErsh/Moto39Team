@@ -3927,6 +3927,7 @@ html.low-end .nav-user:hover {
   align-items: center;
   gap: 12px;
   padding: 12px 0;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   position: sticky;
@@ -4494,6 +4495,7 @@ html.low-end .nav-user:hover {
     flex-wrap: wrap;
     gap: 8px;
     padding: 10px 0;
+    padding-top: calc(10px + max(env(safe-area-inset-top, 0px), 10px));
   }
 
   .chat-conversation__head .btn-ghost {
@@ -4551,7 +4553,7 @@ html.low-end .nav-user:hover {
   }
 
   .chat-conversation__head {
-    padding-top: 8px;
+    padding-top: calc(8px + max(env(safe-area-inset-top, 0px), 10px));
   }
 
   .chat-messages {
