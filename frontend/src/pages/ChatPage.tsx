@@ -132,7 +132,10 @@ export default function ChatPage() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const activeRoomIdRef = useRef<number | null>(null)
   const roomsRef = useRef<ChatRoomItem[]>([])
-  let wsRetryCount = 0  // сбрасывается при успешном подключении
+  const wsRetryCountRef = useRef(0)  // сохраняется между рендерами
+  const pendingOutboxRef = useRef<string[]>([])  // очередь исходящих на случай, если WS не готов
+  const optimisticIdsRef = useRef<Set<number>>(new Set())  // локальные id ожидающих подтверждения
+  const lastReadIdRef = useRef<Record<number, number>>({})  // последнее прочитанное сообщение по комнате
 
   // Создание комнаты
   const [allUsers, setAllUsers] = useState<PublicUser[]>([])
@@ -169,25 +172,34 @@ export default function ChatPage() {
       return
     }
 
-    // Exponential backoff: не больше 5 попыток за 30 секунд
-    wsRetryCount += 1
-    if (wsRetryCount > 5) {
+    // Если уже открыт/подключается — не создаём новый
+    const existing = wsRef.current
+    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
+    wsRetryCountRef.current += 1
+    if (wsRetryCountRef.current > 8) {
       console.warn('WS: too many reconnect attempts, giving up for 30s')
       reconnectTimer.current = setTimeout(() => {
-        wsRetryCount = 0
+        wsRetryCountRef.current = 0
         connectWs()
       }, 30000)
       return
     }
-    const delay = Math.min(1000 * Math.pow(2, wsRetryCount - 1), 16000)
-    console.log('WS: connecting in', delay, 'ms')
 
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
     ws.onopen = () => {
-      wsRetryCount = 0  // сброс при успехе
+      wsRetryCountRef.current = 0  // сброс при успехе
       ws.send(JSON.stringify({ token: accessToken }))
+      // Пробрасываем накопленную очередь
+      const queue = pendingOutboxRef.current
+      pendingOutboxRef.current = []
+      for (const payload of queue) {
+        try { ws.send(payload) } catch { pendingOutboxRef.current.push(payload) }
+      }
     }
 
     ws.onmessage = (event) => {
@@ -204,11 +216,42 @@ export default function ChatPage() {
           const msg = data.message as MessageItem
           const isOwnMessage = msg.sender_id === user?.id
           setMessages((prev) => {
-            // Replace optimistic message (negative id) with real one
-            const filtered = prev.filter((m) => m.id >= 0 || m.content !== msg.content)
-            if (filtered.some((m) => m.id === msg.id)) return prev
-            return [...filtered, msg]
+            // Уже есть — не дублируем
+            if (prev.some((m) => m.id === msg.id)) return prev
+            // Пробуем заменить один оптимистичный (свой, того же типа/контента)
+            if (isOwnMessage) {
+              const idx = prev.findIndex(
+                (m) =>
+                  m.id < 0 &&
+                  optimisticIdsRef.current.has(m.id) &&
+                  m.message_type === msg.message_type &&
+                  (m.content ?? null) === (msg.content ?? null) &&
+                  (m.image_url ?? null) === (msg.image_url ?? null),
+              )
+              if (idx !== -1) {
+                optimisticIdsRef.current.delete(prev[idx].id)
+                const next = prev.slice()
+                next[idx] = msg
+                return next
+              }
+            }
+            return [...prev, msg]
           })
+          // Если входящее в активной комнате — сразу помечаем прочитанным
+          if (!isOwnMessage && msg.room_id === activeRoomIdRef.current && document.visibilityState === 'visible') {
+            const prevRead = lastReadIdRef.current[msg.room_id] ?? 0
+            if (msg.id > prevRead) {
+              lastReadIdRef.current[msg.room_id] = msg.id
+              apiMarkRead(msg.room_id, msg.id).catch(() => {})
+            }
+            // Гарантируем 0 unread локально
+            setUnread((prev) => {
+              if (!(msg.room_id in prev)) return prev
+              const next = { ...prev }
+              delete next[msg.room_id]
+              return next
+            })
+          }
           // Если это входящее сообщение не в активной комнате — увеличить unread + уведомление
           if (!isOwnMessage && msg.room_id !== activeRoomIdRef.current) {
             setUnread((prev) => ({
@@ -268,8 +311,9 @@ export default function ChatPage() {
         console.warn('WS auth failed (expired token), not reconnecting')
         return
       }
-      console.log('Chat WS disconnected, reconnecting in 3s...')
-      reconnectTimer.current = setTimeout(connectWs, 3000)
+      const delay = Math.min(500 * Math.pow(2, Math.max(0, wsRetryCountRef.current - 1)), 8000)
+      console.log('Chat WS disconnected, reconnecting in', delay, 'ms')
+      reconnectTimer.current = setTimeout(connectWs, delay)
     }
     ws.onerror = () => ws.close()
   }, [user?.id])  // activeRoomId берём из ref, user нужен для фильтрации своих сообщений
@@ -303,8 +347,24 @@ export default function ChatPage() {
       .then((u) => setUnread(u.rooms))
       .catch(() => {})
 
+    const wakeup = () => {
+      const ws = wsRef.current
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+        wsRetryCountRef.current = 0
+        connectWs()
+      }
+    }
+    const onVisibility = () => { if (document.visibilityState === 'visible') wakeup() }
+    window.addEventListener('online', wakeup)
+    window.addEventListener('focus', wakeup)
+    document.addEventListener('visibilitychange', onVisibility)
+
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      window.removeEventListener('online', wakeup)
+      window.removeEventListener('focus', wakeup)
+      document.removeEventListener('visibilitychange', onVisibility)
       wsRef.current?.close()
     }
   }, [connectWs])
@@ -321,6 +381,16 @@ export default function ChatPage() {
     activeRoomIdRef.current = roomId
     setActiveRoom(null)
     setLoadingMessages(true)
+
+    // Сразу оптимистично сбрасываем unread для этой комнаты,
+    // чтобы UI не показывал бэйдж до окончания await и не перезаписывался
+    // запоздалыми ответами apiGetUnread.
+    setUnread((prev) => {
+      if (!(roomId in prev)) return prev
+      const next = { ...prev }
+      delete next[roomId]
+      return next
+    })
 
     const ws = wsRef.current
     if (ws?.readyState === WebSocket.OPEN) {
@@ -339,16 +409,20 @@ export default function ChatPage() {
       setRooms((prev) => prev.map((item) => (item.id === roomId ? { ...item, ...room } : item)))
       setReplyToMessage(null)
       setMessages(msgs)
-      // Отметить прочитанным
+      // Отметить прочитанным на сервере
       if (msgs.length > 0) {
         const last = msgs[msgs.length - 1]
-        await apiMarkRead(roomId, last.id)
-        setUnread((prev) => {
-          const next = { ...prev }
-          delete next[roomId]
-          return next
-        })
+        lastReadIdRef.current[roomId] = last.id
+        try { await apiMarkRead(roomId, last.id) } catch { /* ignore */ }
       }
+      // Ещё раз локально гарантируем 0 (на случай, если пришли новые сообщения
+      // до await и они успели инкрементнуть unread).
+      setUnread((prev) => {
+        if (!(roomId in prev)) return prev
+        const next = { ...prev }
+        delete next[roomId]
+        return next
+      })
     } catch {
       // ignore
     } finally {
@@ -373,7 +447,19 @@ export default function ChatPage() {
     setReplyToMessage(null)
     // Перезагрузить список комнат
     apiListRooms().then(setRooms).catch(() => {})
-    apiGetUnread().then((u) => setUnread(u.rooms)).catch(() => {})
+    // Не перезаписываем unread полностью, чтобы не откатить локально сброшенные
+    // счётчики — сервер может ещё не успеть обработать mark-as-read.
+    apiGetUnread()
+      .then((u) => setUnread((prev) => {
+        const merged: Record<number, number> = { ...u.rooms }
+        // Если локально уже 0 (нет ключа) — оставляем 0, даже если сервер вернул счётчик
+        for (const key of Object.keys(merged)) {
+          const rid = Number(key)
+          if (!(rid in prev)) delete merged[rid]
+        }
+        return merged
+      }))
+      .catch(() => {})
   }, [activeRoomId])
 
   // Если перешли по ?room=123 — сразу открыть эту комнату
@@ -533,84 +619,71 @@ export default function ChatPage() {
       reactions: [],
     }
     setMessages((prev) => [...prev, optimisticMsg])
+    optimisticIdsRef.current.add(optimisticId)
     setDraft('')
     const replyTargetId = replyToMessage?.id ?? null
     setReplyToMessage(null)
     keepComposerVisible()
 
-    const ws = wsRef.current
-    if (!ws) {
-      console.warn('WebSocket not connected')
-      // Remove optimistic on failure
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
-      return
-    }
-    if (ws.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not open, state:', ws.readyState)
-      // Ждём открытия и пробуем снова
-      const onOpen = () => {
-        ws.removeEventListener('open', onOpen)
-        ws.send(JSON.stringify({
-          type: 'message',
-          room_id: activeRoomId,
-          content: text,
-          message_type: 'text',
-          reply_to_message_id: replyTargetId,
-        }))
-      }
-      ws.addEventListener('open', onOpen)
-      return
-    }
-    ws.send(JSON.stringify({
+    const payload = JSON.stringify({
       type: 'message',
       room_id: activeRoomId,
       content: text,
       message_type: 'text',
       reply_to_message_id: replyTargetId,
-    }))
+    })
 
-    // When real message arrives from WS, replace optimistic
-    // Also poll via REST API as fallback in case WS delivery fails
-    const checkReplaced = setTimeout(async () => {
-      setMessages((prev) => {
-        const optimistic = prev.find((m) => m.id === optimisticId)
-        if (!optimistic) return prev
-        // Mark as sending... (still waiting)
-        return prev
-      })
-      // Try REST API fallback after 8s
-      setTimeout(async () => {
-        try {
-          const latest = await apiGetMessages(activeRoomId, undefined, 10)
-          setMessages((prev) => {
-            // Replace optimistic if we find a matching real message
-            const hasMatch = latest.some(
-              (m) => m.content === text && m.sender_id === (user?.id ?? null)
-            )
-            if (hasMatch) {
-              return prev.filter((m) => m.id !== optimisticId)
-            }
-            // Still not delivered — mark as failed
-            return prev.map((m) =>
-              m.id === optimisticId
-                ? { ...m, is_deleted: true, content: '(не отправлено) ' + text }
-                : m
-            )
-          })
-        } catch {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === optimisticId
-                ? { ...m, is_deleted: true, content: '(не отправлено) ' + text }
-                : m
-            )
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(payload)
+      } catch {
+        pendingOutboxRef.current.push(payload)
+      }
+    } else {
+      // Кладём в очередь и триггерим переподключение немедленно
+      pendingOutboxRef.current.push(payload)
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+        connectWs()
+      }
+      // Если состояние CONNECTING — onopen сам разгребёт очередь
+    }
+
+    // REST-фолбэк: если через 3с оптимистичное всё ещё висит — пробуем добрать через REST
+    window.setTimeout(async () => {
+      if (!optimisticIdsRef.current.has(optimisticId)) return
+      try {
+        const latest = await apiGetMessages(activeRoomId, undefined, 20)
+        setMessages((prev) => {
+          const match = latest.find(
+            (m) => m.content === text && m.sender_id === (user?.id ?? null),
           )
-        }
-      }, 8000)
-    }, 5000)
+          if (!match) return prev
+          // Не дублировать, если уже есть
+          if (prev.some((m) => m.id === match.id)) {
+            optimisticIdsRef.current.delete(optimisticId)
+            return prev.filter((m) => m.id !== optimisticId)
+          }
+          optimisticIdsRef.current.delete(optimisticId)
+          return prev.map((m) => (m.id === optimisticId ? match : m))
+        })
+      } catch { /* ignore */ }
+    }, 3000)
 
-    return () => clearTimeout(checkReplaced)
-  }, [draft, activeRoomId, replyToMessage, user])
+    // Финальный маркер «не отправлено» через 15с
+    window.setTimeout(() => {
+      if (!optimisticIdsRef.current.has(optimisticId)) return
+      optimisticIdsRef.current.delete(optimisticId)
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimisticId
+            ? { ...m, is_deleted: true, content: '(не отправлено) ' + text }
+            : m,
+        ),
+      )
+    }, 15000)
+  }, [draft, activeRoomId, replyToMessage, user, connectWs])
 
   const compressImageForChat = useCallback(async (file: File): Promise<File> => {
     const bitmap = await createImageBitmap(file)
