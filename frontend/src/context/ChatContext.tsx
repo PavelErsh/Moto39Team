@@ -41,6 +41,8 @@ export interface ChatContextValue {
   refreshRooms: () => Promise<void>
   /** Перезагрузить unread-счётчики. */
   refreshUnread: () => Promise<void>
+  /** Локально сбросить unread для комнаты (после mark-as-read). */
+  markRoomRead: (roomId: number) => void
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null)
@@ -173,6 +175,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const markRoomRead = useCallback((roomId: number) => {
+    setUnread((prev) => {
+      const roomCount = prev.rooms[roomId] || 0
+      if (!roomCount && !(roomId in prev.rooms)) return prev
+      const nextRooms = { ...prev.rooms }
+      delete nextRooms[roomId]
+      return {
+        total: Math.max(0, prev.total - roomCount),
+        rooms: nextRooms,
+      }
+    })
+  }, [])
+
   const refreshUnread = useCallback(async () => {
     try {
       const u = await apiGetUnread()
@@ -225,6 +240,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     ws: wsRef.current,
     refreshRooms,
     refreshUnread,
+    markRoomRead,
   }
 
   return (

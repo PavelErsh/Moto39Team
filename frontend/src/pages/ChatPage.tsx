@@ -24,6 +24,7 @@ import {
 import { apiListUsers, type PublicUser } from '../api/motorcycles'
 import Avatar from '../components/Avatar'
 import { useAuth } from '../context/AuthContext'
+import { useChatContext } from '../context/ChatContext'
 import { tokenStorage } from '../api/client'
 import { linkifyText } from '../utils/linkify'
 import { notify } from '../utils/notifications'
@@ -98,6 +99,7 @@ type View = 'list' | 'chat' | 'create'
 
 export default function ChatPage() {
   const { user } = useAuth()
+  const { markRoomRead: markRoomReadGlobal, setActiveRoomId: setActiveRoomIdGlobal, refreshUnread: refreshUnreadGlobal } = useChatContext()
   const isAdmin = user?.is_superuser ?? false
   const [view, setView] = useState<View>('list')
   const [searchParams] = useSearchParams()
@@ -251,6 +253,8 @@ export default function ChatPage() {
               delete next[msg.room_id]
               return next
             })
+            // И в глобальном контексте — чтобы бэйдж в меню/иконке не мигал
+            markRoomReadGlobal(msg.room_id)
           }
           // Если это входящее сообщение не в активной комнате — увеличить unread + уведомление
           if (!isOwnMessage && msg.room_id !== activeRoomIdRef.current) {
@@ -316,7 +320,7 @@ export default function ChatPage() {
       reconnectTimer.current = setTimeout(connectWs, delay)
     }
     ws.onerror = () => ws.close()
-  }, [user?.id])  // activeRoomId берём из ref, user нужен для фильтрации своих сообщений
+  }, [user?.id, markRoomReadGlobal])  // activeRoomId берём из ref, user нужен для фильтрации своих сообщений
 
   useEffect(() => {
     const root = document.documentElement
@@ -379,6 +383,9 @@ export default function ChatPage() {
     setView('chat')
     setActiveRoomId(roomId)
     activeRoomIdRef.current = roomId
+    setActiveRoomIdGlobal(roomId)
+    // Сразу сбрасываем глобальный unread → пропадает бэйдж в меню и в иконке app
+    markRoomReadGlobal(roomId)
     setActiveRoom(null)
     setLoadingMessages(true)
 
@@ -430,7 +437,7 @@ export default function ChatPage() {
       // Прокрутить вниз
       setTimeout(() => messagesEndRef.current?.scrollIntoView(), 50)
     }
-  }, [])
+  }, [markRoomReadGlobal, setActiveRoomIdGlobal])
 
   const backToList = useCallback(() => {
     setView('list')
@@ -438,9 +445,12 @@ export default function ChatPage() {
       wsRef.current?.send(
         JSON.stringify({ type: 'leave', room_id: activeRoomId })
       )
+      // На всякий случай ещё раз убедимся, что глобальный unread сброшен
+      markRoomReadGlobal(activeRoomId)
     }
     setActiveRoomId(null)
     activeRoomIdRef.current = null
+    setActiveRoomIdGlobal(null)
     setActiveRoom(null)
     setShowRoomSettings(false)
     setMessages([])
@@ -460,7 +470,9 @@ export default function ChatPage() {
         return merged
       }))
       .catch(() => {})
-  }, [activeRoomId])
+    // Обновим и глобальный контекст (иконка/меню)
+    refreshUnreadGlobal()
+  }, [activeRoomId, markRoomReadGlobal, setActiveRoomIdGlobal, refreshUnreadGlobal])
 
   // Если перешли по ?room=123 — сразу открыть эту комнату
   useEffect(() => {
